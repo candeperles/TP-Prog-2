@@ -1,0 +1,32 @@
+---
+title: "smn"
+format: html
+editor: visual
+---
+
+## Primer Acercamiento a los datos
+
+```{r}
+df_rds <- readRDS("C://Users//anapa//OneDrive//Escritorio//facu//progii//smnclean.rds")
+head(df_rds)
+
+```
+
+```{r}
+#sumamos estaciones
+library(tidyverse)
+library(dplyr)
+estaciones <- read.csv("C://Users//anapa//OneDrive//Escritorio//facu//progii//smn_estaciones.csv")
+df1 <- df_rds %>%
+  inner_join(estaciones, join_by(NOMBRE == Nombre))
+df1
+
+```
+
+```{r}
+precip <- read.csv("C://Users//anapa//OneDrive//Escritorio//facu//progii//smn_precipitaciones.csv",header=FALSE, sep = ',')
+
+
+df <- df1 %>%
+  inner_join(precip, join_by(Nro == Nombre))
+```
