@@ -4,23 +4,23 @@ format: html
 editor: visual
 ---
 
-## Quarto
+# Introducción
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+## Primeras Visualizaciones
 
-## Running Code
+### Muestra de datos y resumen
 
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
-
+Cargamos el dataset y visualizamos las primeras 10 filas
 ```{r}
-1 + 1
+
+df <- readRDS("C://Users//anapa//OneDrive//Escritorio//facu//progii//TP-Prog-2//dataset_smn.rds")
+df$Precipitacion. <- as.numeric(df$Precipitacion.)
+head(df)
 ```
 
-You can add options to executable code like this
+Ahora nos damos una idea general del tipo de datos que posee cada columna y los valores aproximados que toman.
 
 ```{r}
-#| echo: false
-2 * 2
+summary(df)
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
