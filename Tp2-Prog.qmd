@@ -22,5 +22,111 @@ Ahora nos damos una idea general del tipo de datos que posee cada columna y los 
 
 ```{r}
 summary(df)
+
+```
+Transformamos a factor las columnas que los requieran
+
+```{r}
+columnas_factor <- c("NOMBRE","Provincia","Nro")
+
+df <- df %>%
+  mutate_at(columnas_factor, .funs = factor)
+```
+
+
+### Manejo de NAs y datos atipicos
+
+Debido a que la mayoria de los valores que toma la columna PNM, correspondientes a la presión atmósferica, se encuentran en un rango increiblemente atipico para nuestro planeta
+
+```{r}
+df$PNM <- NULL
+```
+
+Ahora nos encargamos de eliminar los datos nulos de nuestro dataset
+
+```{r}
+library(dplyr)
+library(tidyr)
+df <- drop_na(df)
+summary(df)
+```
+Filtramos los valores de la columna DD, direccion del viento, para quedarnos con aquellos menores a 360
+
+```{r}
+df <- df %>% filter(DD<=360)
+```
+
+## EDA
+
+### Analisis univariado
+
+```{r}
+# Load the required package
+library(plotly)
+
+# Create the interactive plot with dropdown
+fig <- plot_ly(df, type = 'histogram') %>%
+  layout(
+    updatemenus = list(
+      list(
+        buttons = list(
+          list(method = "restyle",
+               args = list("x", list(df$TEMP)),
+               label = "Temperatura"),
+          list(method = "restyle",
+               args = list("x", list(df$HUM)),
+               label = "Humedad"),
+          list(method = "restyle",
+               args = list("x", list(df$FF)),
+               label = "Fuerza del Viento"),
+          list(method = "restyle",
+               args = list("x", list(df$Altura)),
+               label = "Altura"),
+          list(method = "restyle",
+               args = list("x", list(df$Precipitacion.)),
+               label = "Precipitacion")
+        ),
+        direction = "down",
+        x = 0.1,
+        xanchor = "left",
+        y = 1.2,
+        yanchor = "top"
+      )
+    )
+  )
+#fig
+```
+
+### Analisis Bivariado
+
+```{r}
+
+# Función para determinar la estación del año en el hemisferio sur, aplicable a cualquier año
+get_estacion <- function(fecha) {
+  # Extraer el año de la fecha
+  anio <- as.numeric(format(fecha, "%Y"))
+  
+  # Definir los rangos de fechas para cada estación del año en el hemisferio sur
+  verano <- as.Date(paste(anio, "-12-21", sep = "")):as.Date(paste(anio + 1, "-03-20", sep = ""))
+  otono <- as.Date(paste(anio, "-03-21", sep = "")):as.Date(paste(anio, "-06-20", sep = ""))
+  invierno <- as.Date(paste(anio, "-06-21", sep = "")):as.Date(paste(anio, "-09-20", sep = ""))
+  primavera <- as.Date(paste(anio, "-09-21", sep = "")):as.Date(paste(anio, "-12-20", sep = ""))
+  
+  # Determinar la estación según la fecha
+  if (fecha %in% verano) {
+    return("Verano")
+  } else if (fecha %in% otono) {
+    return("Otoño")
+  } else if (fecha %in% invierno) {
+    return("Invierno")
+  } else {
+    return("Primavera")
+  }
+}
+
+
+# Aplicar la función a la columna de fechas para crear una nueva columna con la estación
+df$Estacion <- sapply(df$FECHA, get_estacion)
+
 ```
 
