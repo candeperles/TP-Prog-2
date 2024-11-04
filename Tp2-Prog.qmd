@@ -11,6 +11,7 @@ editor: visual
 ### Muestra de datos y resumen
 
 Cargamos el dataset y visualizamos las primeras 10 filas
+
 ```{r}
 
 df <- readRDS("C://Users//anapa//OneDrive//Escritorio//facu//progii//TP-Prog-2//dataset_smn.rds")
@@ -24,6 +25,7 @@ Ahora nos damos una idea general del tipo de datos que posee cada columna y los 
 summary(df)
 
 ```
+
 Transformamos a factor las columnas que los requieran
 
 ```{r}
@@ -32,7 +34,6 @@ columnas_factor <- c("NOMBRE","Provincia","Nro")
 df <- df %>%
   mutate_at(columnas_factor, .funs = factor)
 ```
-
 
 ### Manejo de NAs y datos atipicos
 
@@ -50,6 +51,7 @@ library(tidyr)
 df <- drop_na(df)
 summary(df)
 ```
+
 Filtramos los valores de la columna DD, direccion del viento, para quedarnos con aquellos menores a 360
 
 ```{r}
@@ -97,7 +99,83 @@ fig <- plot_ly(df, type = 'histogram') %>%
 #fig
 ```
 
-### Analisis Bivariado
+Vemos cuantas ocurrencias unicas de estaciones y provincias tenemos, y a su vez que provincias y estaciones poseen mas registros.
+
+```{r}
+library(dplyr)
+
+n_distinct(df$NOMBRE)
+n_distinct(df$Provincia)
+
+df %>% count(NOMBRE) %>% arrange(desc(n))
+df %>% count(Provincia) %>% arrange(desc(n))
+
+```
+
+Analizamos la cantidad de registros que existen para cada uno de los dias y graficos los resultados en un line plot usando ggplot2
+
+```{r}
+registros_diarios <- df %>%
+  group_by(FECHA) %>%
+  summarise(Registros = n())
+
+```
+
+
+```{r}
+library(ggplot2)
+
+# Plot the daily counts
+ggplot(registros_diarios, aes(x = FECHA, y = Registros)) +
+  geom_line(color = "cornflowerblue") +
+  labs(title = "Cantidad de registros por dia",
+       x = "Fecha",
+       y = "Registros") +
+  theme_minimal()
+
+```
+
+Buscamos esos dias con valores maximos y minimos, y el promedio de registros por dia.
+
+```{r}
+summary(registros_diarios)
+```
+```{r}
+max_re <- registros_diarios %>% filter(Registros == max(Registros))
+min_re <- registros_diarios %>% filter(Registros == min(Registros))
+max_re
+min_re
+```
+
+
+### Analisis Multivariado
+
+Ploteamos una matriz de correlacion para buscar relaciones entre las variables numericas de nuestro dataset
+
+```{r}
+library(reshape2) # Para reestructurar datos para ggplot
+
+#Seleccionar solo las columnas numéricas
+numeric_df <- df %>% select_if(is.numeric)
+
+#Calcular la matriz de correlación
+cor_matrix <- cor(numeric_df, use = "complete.obs")
+
+# Reestructurar la matriz de correlación para ggplot2
+cor_melted <- melt(cor_matrix)
+
+# Graficar el mapa de calor
+ggplot(cor_melted, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                       midpoint = 0, limit = c(-1, 1), space = "Lab",
+                       name="Correlación") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  labs(title = "Matriz de Correlación", x = "Variables", y = "Variables")
+
+```
+
 
 ```{r}
 
@@ -129,4 +207,3 @@ get_estacion <- function(fecha) {
 df$Estacion <- sapply(df$FECHA, get_estacion)
 
 ```
-
