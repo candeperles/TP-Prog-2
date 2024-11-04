@@ -29,6 +29,7 @@ summary(df)
 Transformamos a factor las columnas que los requieran
 
 ```{r}
+library(dplyr)
 columnas_factor <- c("NOMBRE","Provincia","Nro")
 
 df <- df %>%
@@ -121,7 +122,6 @@ registros_diarios <- df %>%
 
 ```
 
-
 ```{r}
 library(ggplot2)
 
@@ -140,6 +140,7 @@ Buscamos esos dias con valores maximos y minimos, y el promedio de registros por
 ```{r}
 summary(registros_diarios)
 ```
+
 ```{r}
 max_re <- registros_diarios %>% filter(Registros == max(Registros))
 min_re <- registros_diarios %>% filter(Registros == min(Registros))
@@ -147,10 +148,11 @@ max_re
 min_re
 ```
 
-
 ### Analisis Multivariado
 
 Ploteamos una matriz de correlacion para buscar relaciones entre las variables numericas de nuestro dataset
+
+En esta matriz podemos apreciar que, mientras que niguna variable exhibe una fuerte correlación con otras, sí existen ciertas con una correlación cercana a 0.5 como Latitud y Temperatura (las temperaturas más calidas con más comunes al norte que al sur del país), Longitud con Temperatura y Humedad (las zonas cercanas a la costa atlantica tienden a presentar más humedad), Latitud y Altura, u Hora y Temperatura (son más comunes las altas temperatura en ciertos momentos del día)
 
 ```{r}
 library(reshape2) # Para reestructurar datos para ggplot
@@ -176,34 +178,272 @@ ggplot(cor_melted, aes(x = Var1, y = Var2, fill = value)) +
 
 ```
 
-
 ```{r}
-
-# Función para determinar la estación del año en el hemisferio sur, aplicable a cualquier año
+# 
+# Definimos una funcion que indique la estacion en base a la fecha
 get_estacion <- function(fecha) {
-  # Extraer el año de la fecha
-  anio <- as.numeric(format(fecha, "%Y"))
+  # Nos quedamos solo con dia y mes
+  mes <- as.integer(format(fecha, "%m"))
+  dia <- as.integer(format(fecha, "%d"))
   
-  # Definir los rangos de fechas para cada estación del año en el hemisferio sur
-  verano <- as.Date(paste(anio, "-12-21", sep = "")):as.Date(paste(anio + 1, "-03-20", sep = ""))
-  otono <- as.Date(paste(anio, "-03-21", sep = "")):as.Date(paste(anio, "-06-20", sep = ""))
-  invierno <- as.Date(paste(anio, "-06-21", sep = "")):as.Date(paste(anio, "-09-20", sep = ""))
-  primavera <- as.Date(paste(anio, "-09-21", sep = "")):as.Date(paste(anio, "-12-20", sep = ""))
-  
-  # Determinar la estación según la fecha
-  if (fecha %in% verano) {
+  # determinamos la estacion en base a estos datos
+  if ((mes == 12 && dia >= 21) || mes %in% c(1, 2) || (mes == 3 && dia <= 20)) {
     return("Verano")
-  } else if (fecha %in% otono) {
+  } else if ((mes == 3 && dia >= 21) || mes %in% c(4, 5) || (mes == 6 && dia <= 20)) {
     return("Otoño")
-  } else if (fecha %in% invierno) {
+  } else if ((mes == 6 && dia >= 21) || mes %in% c(7, 8) || (mes == 9 && dia <= 20)) {
     return("Invierno")
   } else {
     return("Primavera")
   }
 }
 
-
-# Aplicar la función a la columna de fechas para crear una nueva columna con la estación
+# Lo aplicamos al dataset
 df$Estacion <- sapply(df$FECHA, get_estacion)
+
+# Lo pasamos de character a factor
+df$Estacion <- as.factor(df$Estacion)
+
+#Visualizamos
+summary(df$Estacion)
+```
+
+Creamos tambien una variable Amplitud, que denota la amplitud termica alcanzada cada dia.
+
+```{r}
+library(dplyr)
+
+# Función para calcular amplitud térmica diaria
+calcular_amplitud_termica <- function(df) {
+  df <- df %>%
+    
+    # Agrupar por día y estación
+    group_by(FECHA, NOMBRE) %>%
+    
+    # Calcular la amplitud térmica diaria
+    summarize(AmplitudTermica = max(TEMP) - min(TEMP), .groups = 'drop') %>%
+    
+    # Unir la amplitud térmica calculada de vuelta a cada registro horario original
+    right_join(df, by = c("FECHA", "NOMBRE"))
+  
+  return(df)
+}
+
+# Aplicar la función al dataset
+df <- calcular_amplitud_termica(df)
+
+df$AmplitudTermica <- as.numeric(df$AmplitudTermica)
+
+df$AmplitudTermica
+```
+
+# Analisis Espacial
+
+En esta seccion llevaremos s cabo un analisis espacial del dataset, valiendonos de los datos geograficos de cada estacion y de la libreria leaflet.
+
+## Mapa Diario
+
+Este mapa busca representar la evolucion de las diferentes variables climaticas a lo largo de un dia elegido al azar, este tipo de graficos es usado a menudo para radares meteorologicos y seguimiento de temporales.
+
+Un ejemplo es el uso de radaras meteorologicos de seguimiento de precipitaciones en Formula 1, para agilizar la estrategia del equipo y piloto en base al movimiento de frentes de lluvia y tormentas alrededor del circuito.
+
+```{r}
+library(shiny)
+library(leaflet)
+library(dplyr)
+library(sf)
+library(leaflet.extras)
+
+# Seleccionar un día aleatorio en el que haya llovia en alguna estación
+set.seed(123)
+df_dia_lluvioso <- df %>%
+  filter(Precipitacion. > 0) %>%
+  select(FECHA) %>%
+  distinct() %>%
+  sample_n(1)
+
+dia_seleccionado <- df_dia_lluvioso$FECHA[1]
+datos_dia <- df %>%
+  filter(as.Date(FECHA) == dia_seleccionado)
+
+# UI de Shiny
+ui <- fluidPage(
+  titlePanel("Mapa de Estaciones Meteorológicas con Capas por Variable"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("hora", "Selecciona la Hora:",
+                  min = 0, max = 23, value = 12, step = 1, round = 0,
+                  sep = "", animate = TRUE),
+      checkboxGroupInput("layers", "Selecciona Capas a Mostrar:",
+                         choices = list("Temperatura" = "temp",
+                                        "Lluvia" = "rain",
+                                        "Dirección del Viento" = "wind"),
+                         selected = c("temp", "rain", "wind"))
+    ),
+    
+    mainPanel(
+      leafletOutput("mapa")
+    )
+  )
+)
+
+# Servidor de Shiny
+server <- function(input, output, session) {
+  datos_filtrados <- reactive({
+    datos_dia %>% filter(HORA == input$hora)
+  })
+  
+  output$mapa <- renderLeaflet({
+    leaflet() %>%
+      addProviderTiles(providers$OpenStreetMap) %>%
+      setView(lng = mean(datos_dia$Longitud), lat = mean(datos_dia$Latitud), zoom = 6)
+  })
+  
+  observe({
+    data <- datos_filtrados()
+    
+    leafletProxy("mapa", data = data) %>%
+      clearMarkers() %>%
+      clearShapes()
+    
+    # Capa de Temperatura
+    if ("temp" %in% input$layers) {
+      leafletProxy("mapa", data = data) %>%
+        addCircleMarkers(
+          ~Longitud, ~Latitud,
+          color = ~colorNumeric("RdYlGn", TEMP, reverse = TRUE)(TEMP),
+          radius = 5,
+          group = "Temperatura",
+          popup = ~paste(
+            "<b>Estación:</b>", NOMBRE, "<br>",
+            "<b>Temperatura:</b>", TEMP, "°C", "<br>",
+            "<b>Lluvia:</b>", Precipitacion., "mm", "<br>",
+            "<b>Fuerza del viento:</b>", FF, "km/h", "<br>",
+            "<b>Dirección del viento:</b>", DD, "°"
+          )
+        )
+    }
+    
+    # Capa de Lluvia
+    if ("rain" %in% input$layers) {
+      leafletProxy("mapa", data = data) %>%
+        addCircleMarkers(
+          ~Longitud, ~Latitud,
+          color = ~colorNumeric("Blues", Precipitacion.)(Precipitacion.),
+          radius = 5,
+          group = "Lluvia",
+          popup = ~paste(
+            "<b>Estación:</b>", NOMBRE, "<br>",
+            "<b>Temperatura:</b>", TEMP, "°C", "<br>",
+            "<b>Lluvia:</b>", Precipitacion., "mm", "<br>",
+            "<b>Fuerza del viento:</b>", FF, "km/h", "<br>",
+            "<b>Dirección del viento:</b>", DD, "°"
+          )
+        )
+    }
+    
+    # Agregar controles de capas
+    leafletProxy("mapa") %>%
+      addLayersControl(
+        overlayGroups = c("Temperatura", "Lluvia"),
+        options = layersControlOptions(collapsed = FALSE)
+      )
+  })
+}
+
+# Ejecutar la aplicación
+shinyApp(ui, server)
+
+```
+
+En este caso los colores van de verde (temperaturas bajas) a rojo (temperaturas altas), y en caso de precipitaciones, de gris (sin precipitaciones) a azul (fuertes precipitaciones). Cada circulo es una estacion distintas y al hacer click en esta podemos ver las condiciones climaticas para esa estacion en la hora del dia que hayamos seleccionado, ademas de ver de que estacion se trata. Las capas pueden ocultarse para focalizar el analisis en una variables en especifico
+
+## Mapa de calentamiento
+
+En este mapa podemos visualizar como evoluciona la temperatura promedio por estación y mes, para el periodo de tiempo con el que estamos trabajando, esto puede ayudra a visualizar fenomenos climaticos como olas de calor o frentes de frio polar.
+
+```{r}
+library(shiny)
+library(leaflet)
+library(dplyr)
+library(lubridate)
+
+# Cargar tus datos (asegúrate de que el DataFrame 'df' contenga tus datos)
+# df <- read.csv("tu_archivo.csv")  # Descomenta y ajusta según sea necesario
+
+# Comprobación de datos
+if (any(is.na(df$TEMP))) {
+  stop("Hay valores NA en la columna de temperatura.")
+}
+
+if (any(is.na(df$FECHA))) {
+  stop("Hay valores NA en la columna de fechas.")
+}
+
+
+# Calcular la temperatura promedio por mes y año
+df$year_month <- floor_date(df$FECHA, "month")
+temp_promedio <- df %>%
+  group_by(year_month, Latitud, Longitud, NOMBRE) %>%
+  summarise(average_temp = mean(TEMP, na.rm = TRUE), .groups = 'drop')
+
+# Comprobación de si temp_promedio tiene datos
+if (nrow(temp_promedio) == 0) {
+  stop("No hay datos disponibles para mostrar.")
+}
+
+# UI de Shiny
+ui <- fluidPage(
+  titlePanel("Temperatura Promedio por Mes y Año"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("year_month", "Selecciona el Mes y Año:",
+                  min = min(temp_promedio$year_month, na.rm = TRUE),
+                  max = max(temp_promedio$year_month, na.rm = TRUE),
+                  value = min(temp_promedio$year_month, na.rm = TRUE),
+                  timeFormat = "%Y-%m",
+                  animate = TRUE)
+    ),
+    
+    mainPanel(
+      leafletOutput("mapa")
+    )
+  )
+)
+
+# Servidor de Shiny
+server <- function(input, output, session) {
+  output$mapa <- renderLeaflet({
+    leaflet() %>%
+      addProviderTiles(providers$OpenStreetMap) %>%
+      setView(lng = -64, lat = -38, zoom = 4)  # Ajusta la vista inicial
+  })
+
+  observe({
+    datos_filtrados <- temp_promedio %>%
+      filter(year_month == input$year_month)
+
+    if (nrow(datos_filtrados) > 0) {
+      leafletProxy("mapa", data = datos_filtrados) %>%
+        clearMarkers() %>%
+        clearControls() %>%
+        addCircleMarkers(
+          ~Longitud, ~Latitud,
+          radius = 6,
+          color = ~colorNumeric("RdYlGn", average_temp)(average_temp),
+          fillOpacity = 0.7,
+          popup = ~paste("Estación:", NOMBRE, "<br>",
+                         "Temperatura Promedio:", round(average_temp, 2), "°C")
+        ) %>%
+        addLegend(pal = colorNumeric("RdYlGn", NULL), values = ~average_temp,
+                  position = "bottomright", title = "Temperatura Promedio (°C)")
+    }
+  })
+}
+
+# Ejecutar la aplicación
+shinyApp(ui, server)
 
 ```
