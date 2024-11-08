@@ -6,6 +6,22 @@ editor: visual
 
 # Introducción
 
+En este trabajo realizaremos un análisis exploratorio de datos provistos por el Servicio Meteorológico Nacional. Los datos son diarios, los archivos por día indican año, mes y día. Exploramos distintas categorías y variables como: Fecha, hora, temperatura, humedad, pnm ( presión al nivel Del Mar), dd( dirección del viento), fuerza del viento y nombre del aeropuerto.
+
+Nuestro objetivo del trabajo consiste:
+
+\- Combinar los datos dados en un único dataset
+
+\- Importar y limpiar datos
+
+\- Realizar análisis estadístico y descriptivo
+
+\- Visualizar variables en gráficos
+
+\- Manejar los valores nulos, faltantes o duplicados
+
+Entre otras consignas e ideas que vayamos aplicado a lo largo del trabajo.
+
 ## Primeras Visualizaciones
 
 ### Muestra de datos y resumen
@@ -148,6 +164,43 @@ max_re
 min_re
 ```
 
+Realizamos un gráfico de 10 estaciones con mayor promedio de temperatura
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(plotly)
+
+promedio_TEMP <- df %>%
+  group_by(NOMBRE) %>%
+  summarise(promedio_TEMP = mean(TEMP, na.rm = TRUE))
+promedio_TEMP
+
+top_10 <- promedio_TEMP[order(-promedio_TEMP$promedio_TEMP), ][1:10, ]
+
+top_10
+
+
+grafico_aero_temp = ggplot(top_10, aes(x = promedio_TEMP, y = reorder(NOMBRE, promedio_TEMP))) +
+  geom_bar(stat = "identity", fill = "lightcoral") +
+  labs(x = "Temperatura Promedio", y = "Estaciones",) + ggtitle("Top 10 estaciones con mayor promedio de temperatura") +
+  theme(plot.title = element_text(size = 10)) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(hjust = 1))
+grafico_aero_temp
+```
+
+Distribución de humedad por estación
+
+```{r}
+p2 <- ggplot(df, aes(x = Estacion, y = HUM, fill = Estacion)) +
+  geom_boxplot() +
+  labs(title = "Distribución de humedad por estación", x = "Estación", y = "Humedad") +
+  theme_minimal()
+p2
+```
+
 ### Analisis Multivariado
 
 Ploteamos una matriz de correlacion para buscar relaciones entre las variables numericas de nuestro dataset
@@ -234,8 +287,121 @@ df <- calcular_amplitud_termica(df)
 
 df$AmplitudTermica <- as.numeric(df$AmplitudTermica)
 
-df$AmplitudTermica
 ```
+
+Distribución amplitud térmica
+
+```{r}
+library(ggplot2)
+library(scales)
+
+p1_at <- ggplot(df, aes(x = AmplitudTermica)) +
+  geom_histogram(binwidth = 1, fill = "deeppink", color = "grey", alpha = 0.7) +
+  labs(title = "Histograma De Amplitud Termica", x = "Amplitud Termica", y = "Frequency") +
+  theme_minimal()
+p1_at
+
+```
+
+Vemos la temperatura promedio por estación del año
+
+```{r}
+library(ggplot2)
+
+promedio_estaciones = df %>%
+  group_by(Estacion)%>%
+  summarise(promedio_estacion_temp = mean(TEMP, na.rm = TRUE))
+
+grafico_estacion_temp = ggplot(promedio_estaciones, aes(x= Estacion, y= promedio_estacion_temp)) + geom_bar(fill= "lightcoral",stat = "identity")  + 
+  labs(title="Temperatura promedio por estación", 
+       y="Estación") + 
+  theme_minimal()
+grafico_estacion_temp
+```
+
+Amplitud térmica promedio por estación
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(plotly)
+promedio_amplitud <- df %>%
+  group_by(NOMBRE) %>%
+  summarise(promedio_amplitud = mean(AmplitudTermica, na.rm = TRUE))
+promedio_amplitud
+
+top_10 <- promedio_amplitud[order(-promedio_amplitud$promedio_amplitud), ][1:10, ]
+
+top_10
+
+
+grafico_amplitud = ggplot(top_10, aes(x = promedio_amplitud, y = reorder(NOMBRE, promedio_amplitud))) +
+  geom_bar(stat = "identity", fill = "darkcyan") +
+  labs(x = "Amplitud Promedio", y = "Estaciones",) + ggtitle("Top 10 estaciones con mayor promedio de Amplitud") +
+  theme(plot.title = element_text(size = 10)) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(hjust = 1))
+grafico_amplitud
+
+```
+
+Distribución de temperatura por estación
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+p1 <- ggplot(df, aes(x = Estacion, y = TEMP, fill = Estacion)) +
+  geom_boxplot() +
+  labs(title = "Distribución de temperatura por estación", x = "Estación", y = "Temperatura") +
+  theme_minimal()
+p1
+```
+
+Distribución de humedad por estación
+
+```{r}
+p2 <- ggplot(df, aes(x = Estacion, y = HUM, fill = Estacion)) +
+  geom_boxplot() +
+  labs(title = "Distribución de humedad por estación", x = "Estación", y = "Humedad") +
+  theme_minimal()
+p2
+```
+
+Precipitaciones promedio por estacion
+
+```{r}
+p5 <- df %>%
+  group_by(Estacion) %>%
+  summarise(promedio_precipitacion = mean(Precipitacion., na.rm = TRUE)) %>%
+  filter(!is.na(promedio_precipitacion)) %>%
+  ggplot(aes(x = Estacion, y = promedio_precipitacion, fill = Estacion)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(
+    y = "Promedio Precipitaciones",
+    title = "Promedio de precipitaciones por Estacion"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+p5
+```
+
+Scatter plot temperatura vs humedad:
+
+El gráfico `p3` es un diagrama de dispersión de Temperatura vs Humedad, con puntos coloreados por la `estación` . Este gráfico es útil para visualizar la relación entre la temperatura y la humedad en diferentes estaciones. Al colorear los puntos según la temporada, se puede observar cualquier patrón o tendencia estacional en los datos. Por ejemplo, que determinadas estaciones tienen temperaturas más altas y humedad más baja, o viceversa. Este tipo de visualización ayuda a comprender cómo estas dos variables interactúan y varían con los cambios estacionales.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+p3 <- ggplot(df, aes(x = TEMP, y = HUM, color = Estacion)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "Scatter plot de Temperatura vs Humedad", x = "Temperatura", y = "Humedad") +
+  theme_minimal()
+p3
+```
+
 
 # Analisis Espacial
 
@@ -432,12 +598,12 @@ server <- function(input, output, session) {
         addCircleMarkers(
           ~Longitud, ~Latitud,
           radius = 6,
-          color = ~colorNumeric("RdYlGn", average_temp)(average_temp),
+          color = ~colorNumeric("RdYlBu", average_temp, reverse = TRUE)(average_temp),
           fillOpacity = 0.7,
           popup = ~paste("Estación:", NOMBRE, "<br>",
                          "Temperatura Promedio:", round(average_temp, 2), "°C")
         ) %>%
-        addLegend(pal = colorNumeric("RdYlGn", NULL), values = ~average_temp,
+        addLegend(pal = colorNumeric("RdYlBu", NULL, reverse = TRUE), values = ~average_temp,
                   position = "bottomright", title = "Temperatura Promedio (°C)")
     }
   })
