@@ -414,7 +414,9 @@ Aqui utilizaremos celdas de Voronoi para mejor representar el area alcanzada por
 ```{r}
 library(dplyr)
 library(deldir)
-library(ggplot2)
+library(leaflet)
+library(sf)
+library(rnaturalearth)
 
 # Extraemos los promedios de temperatura y precipitaciones
 avg_data <- df %>%
@@ -422,28 +424,107 @@ avg_data <- df %>%
   summarise(avg_temperature = mean(TEMP, na.rm = TRUE),
             avg_precipitation = mean(Precipitacion., na.rm = TRUE))
 
-# Definimos las celdas de voronoi
+# Definimos las celdas de Voronoi
 voronoi <- deldir(avg_data$Longitud, avg_data$Latitud)
 
-# Extraemos las celdas de Voronoi
-voronoi_tiles <- data.frame(
-  x = voronoi$d$dirsgs[, c(1, 3)],  # las coordenadas de los segmentos
-  y = voronoi$d$dirsgs[, c(2, 4)]
-)
+# Extraemos las celdas de Voronoi (polígonos)
+voronoi_tiles <- tile.list(voronoi)
 
-# Convertimos las coordenadas en un dataframe
-voronoi_tiles <- data.frame(
-  x = c(voronoi_tiles$x[,1], voronoi_tiles$y[,1]),
-  y = c(voronoi_tiles$x[,2], voronoi_tiles$y[,2])
-)
+# Convertir las celdas de Voronoi a polígonos (objeto sf)
+voronoi_polygons <- lapply(voronoi_tiles, function(tile) {
+  coords <- cbind(tile$x, tile$y)
+  
+  # Asegurarse de que el primer y el último punto coincidan para cerrar el polígono
+  coords <- rbind(coords, coords[1, ])
+  
+  # Convertir a un polígono
+  st_polygon(list(coords))
+})
 
-# Crear el gráfico con ggplot
-ggplot() +
-  geom_polygon(data = voronoi_tiles, aes(x = x, y = y, group = interaction(x, y)), fill = "lightblue", color = "black") +
-  geom_point(data = avg_data, aes(x = Longitud, y = Latitud, color = avg_temperature), size = 2) +
-  scale_color_viridis_c() +
-  theme_minimal() +
-  labs(title = "Voronoi tessellation of temperatures")
+# Crear un objeto 'sf' con los polígonos de Voronoi
+voronoi_sf <- st_sfc(voronoi_polygons, crs = 4326)
+
+# Añadir las temperaturas promedio al objeto sf
+voronoi_sf <- st_sf(voronoi_sf, avg_temperature = rep(avg_data$avg_temperature, length.out = length(voronoi_sf)))
+
+# Obtener el mapa de Argentina usando rnaturalearth
+argentina <- ne_states(country = "Argentina")
+
+# Crear el mapa interactivo con leaflet
+leaflet(data = voronoi_sf) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%  # Fondo de mapa
+  addPolygons(
+    fillColor = ~colorNumeric(palette = "RdYlGn", domain = voronoi_sf$avg_temperature, reverse = TRUE)(avg_temperature),
+    fillOpacity = 0.5,
+    color = "black",
+    weight = 1,
+    popup = ~paste("Temperature: ", round(avg_temperature, 2), "°C")
+  ) %>%
+  addCircleMarkers(
+    data = avg_data,
+    ~Longitud, ~Latitud,
+    radius = 5,
+    color = ~colorNumeric(palette = "RdYlGn", domain = avg_data$avg_temperature, reverse = TRUE)(avg_temperature),
+    popup = ~paste("Station: ", NOMBRE, "<br>Temperature: ", round(avg_temperature, 2), "°C")
+  ) %>%
+  setView(lng = -65, lat = -38, zoom = 5)  # Ajustar vista inicial (aproximadamente en el centro de Argentina)
+
+
+```
+
+
+```{r}
+
+library(dplyr)
+library(deldir)
+library(leaflet)
+library(sf)
+library(rnaturalearth)
+
+# Definimos las celdas de Voronoi
+voronoi2 <- deldir(avg_data$Longitud, avg_data$Latitud)
+
+# Extraemos las celdas de Voronoi (polígonos)
+voronoi_tiles2 <- tile.list(voronoi2)
+
+# Convertir las celdas de Voronoi a polígonos (objeto sf)
+voronoi_polygons2 <- lapply(voronoi_tiles2, function(tile) {
+  coords <- cbind(tile$x, tile$y)
+  
+  # Asegurarse de que el primer y el último punto coincidan para cerrar el polígono
+  coords <- rbind(coords, coords[1, ])
+  
+  # Convertir a un polígono
+  st_polygon(list(coords))
+})
+
+# Crear un objeto 'sf' con los polígonos de Voronoi
+voronoi_sf2 <- st_sfc(voronoi_polygons, crs = 4326)
+
+# Añadir las precipitaciones promedio al objeto sf
+voronoi_sf_precip <- st_sf(voronoi_sf2, avg_precipitation = rep(avg_data$avg_precipitation, length.out = length(voronoi_sf2)))
+
+# Obtener el mapa de Argentina usando rnaturalearth
+argentina <- ne_states(country = "Argentina")
+
+# Crear el mapa interactivo con leaflet
+leaflet(data = voronoi_sf_precip) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%  # Fondo de mapa
+  addPolygons(
+    fillColor = ~colorNumeric(palette = "Blues", domain = voronoi_sf$avg_precipitation)(avg_precipitation),
+    fillOpacity = 0.7,
+    color = "black",
+    weight = 1,
+    popup = ~paste("Precipitation: ", round(avg_precipitation, 2), "mm")
+  ) %>%
+  addCircleMarkers(
+    data = avg_data,
+    ~Longitud, ~Latitud,
+    radius = 5,
+    color = ~colorNumeric(palette = "Blues", domain = avg_data$avg_precipitation)(avg_precipitation),
+    popup = ~paste("Station: ", NOMBRE, "<br>Precipitation: ", round(avg_precipitation, 2), "mm")
+  ) %>%
+  setView(lng = -65, lat = -38, zoom = 5)  # Ajustar vista inicial (aproximadamente en el centro de Argentina)
 
 ```
 
