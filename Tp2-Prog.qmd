@@ -113,7 +113,7 @@ fig <- plot_ly(df, type = 'histogram') %>%
       )
     )
   )
-#fig
+fig
 ```
 
 Vemos cuantas ocurrencias unicas de estaciones y provincias tenemos, y a su vez que provincias y estaciones poseen mas registros.
@@ -189,16 +189,6 @@ grafico_aero_temp = ggplot(top_10, aes(x = promedio_TEMP, y = reorder(NOMBRE, pr
   theme_minimal() +
   theme(axis.text.y = element_text(hjust = 1))
 grafico_aero_temp
-```
-
-Distribución de humedad por estación
-
-```{r}
-p2 <- ggplot(df, aes(x = Estacion, y = HUM, fill = Estacion)) +
-  geom_boxplot() +
-  labs(title = "Distribución de humedad por estación", x = "Estación", y = "Humedad") +
-  theme_minimal()
-p2
 ```
 
 ### Analisis Multivariado
@@ -319,6 +309,15 @@ grafico_estacion_temp = ggplot(promedio_estaciones, aes(x= Estacion, y= promedio
 grafico_estacion_temp
 ```
 
+Distribución de humedad por estación
+
+```{r}
+p2 <- ggplot(df, aes(x = Estacion, y = HUM, fill = Estacion)) +
+  geom_boxplot() +
+  labs(title = "Distribución de humedad por estación", x = "Estación", y = "Humedad") +
+  theme_minimal()
+p2
+```
 Amplitud térmica promedio por estación
 
 ```{r}
@@ -758,7 +757,7 @@ df_cor <- df %>%
 
 df_cor <- df_cor %>%
   arrange(FECHA) %>%
-  mutate(lluvia_siguiente = lead(Precipitacion. > 0, default = FALSE)) 
+  mutate(lluvia_siguiente = lead(Precipitacion. > 0, 1,0)) 
 
 # Paso 3: Calcular la correlación entre condiciones altas y lluvia al día siguiente
 correlacion <- cor(df_cor$condiciones_altas, df_cor$lluvia_siguiente, use = "complete.obs")
@@ -769,11 +768,11 @@ Ahora analizamos la correlacion entre la lluvia de un dia y la lluvia del siguie
 
 ```{r}
 # Creamos una columna que diga si llovio ese dia
-df_cor2 <- df %>%
+df_cor2 <- df_cor %>%
   mutate( lluvia = ifelse(Precipitacion. != 0, 1, 0))
 
 # Paso 3: Calcular la correlación entre condiciones altas y lluvia al día siguiente
-correlacion2 <- cor(df_cor$lluvia, df_cor$lluvia_siguiente, use = "complete.obs")
+correlacion2 <- cor(df_cor2$lluvia, df_cor2$lluvia_siguiente, use = "complete.obs")
 cat("La correlación entre lluvia en una dia puntual y lluvia al día siguiente es:", correlacion2, "\n")
 
 ```
@@ -955,47 +954,64 @@ cat("RMSE en el conjunto de prueba:", rmse_test, "\n")
 Visualizamos las predicciones realizadas
 
 ```{r}
-prophet_plot_components(modelo, prediccion)
+prophet_plot_components(modelo, predicciones)
 ```
 
 # Prediccion a 12 meses del clima
-Para este analisis utilizamos Prophet y creamos un loop para realizar predicciones sobre cada una de las variables de nuestro dataset y despues graficarlas
+Para este analisis utilizamos Prophet y realizamos predicciones sobre 2 de las variables de nuestro dataset para despues graficarlas.
+
 ```{r}
+df_pro <- df %>% 
+  group_by(FECHA) %>%
+  filter(Provincia == 'CAPITAL FEDERAL') %>%
+  summarise(TEMP = mean(TEMP),
+            Precip = mean(Precipitacion.))
 
-# Definir las columnas de interés para el clima general
-variables <- c("TEMP", "HUM", "FF", "DD", "Precipitacion")
+df_temp <- df_pro %>%
+  mutate(ds = FECHA, y = TEMP)
 
-# Crear una lista para almacenar modelos y predicciones
-modelos <- list()
-predicciones_futuro <- list()
+# Ajustar el modelo
+modelo <- prophet(df_temp)
 
-for (variable in variables) {
-  # Prepara los datos para Prophet con la variable correspondiente
-  datos <- df %>%
-    select(ds = FECHA, y = !!sym(variable))
-  
-  # Entrenar el modelo Prophet
-  modelo <- prophet(datos)
-  
-  # Crear un dataframe para predicción a 12 meses
-  futuro <- make_future_dataframe(modelo, periods = 365)
-  
-  # Hacer predicciones para los próximos 12 meses
-  prediccion <- predict(modelo, futuro)
-  
-  # Guardar el modelo y la predicción
-  modelos[[variable]] <- modelo
-  predicciones_futuro[[variable]] <- prediccion %>% select(ds, yhat)
-}
+# Generar fechas futuras para los próximos 12 meses (365 días)
+futuro <- make_future_dataframe(modelo, periods = 365)
 
-# Imprimir o graficar las predicciones para cada variable
-for (variable in variables) {
-  cat("Predicciones para", variable, ":\n")
-  print(head(predicciones_futuro[[variable]]))
-  plot(modelos[[variable]], predicciones_futuro[[variable]]) +
-    labs(title = paste("Predicción de", variable, "para los próximos 12 meses"),
-         x = "Fecha", y = variable)
-}
+# Hacer la predicción
+prediccion <- predict(modelo, futuro)
+
+# Graficar la predicción
+plot(modelo, prediccion)  # Graficar la serie temporal con la predicción
+
+# Graficar los componentes del modelo
+prophet_plot_components(modelo, prediccion)
+
+```
+```{r}
+df_pre <- df_pro %>%
+  mutate(ds = FECHA, y = Precip)
+
+# Ajustar el modelo
+modelo <- prophet(df_pre)
+
+# Generar fechas futuras para los próximos 12 meses (365 días)
+futuro <- make_future_dataframe(modelo, periods = 365)
+
+# Hacer la predicción
+prediccion <- predict(modelo, futuro)
+
+# Graficar la predicción
+plot(modelo, prediccion)  # Graficar la serie temporal con la predicción
+
+# Graficar los componentes del modelo
+prophet_plot_components(modelo, prediccion)
 
 ```
 
+
+#Conclusion
+
+En este análisis de datos meteorológicos, pudimos analizar información clave y cumplir los objetivos propuestos al principio. Esta información nos permitió observar patrones y variaciones en las condiciones climáticas de diferentes lugares y momentos.También el análisis mediante gráficos nos dio lugar a entender mejor las variables, sus comportamientos y su relación entre ellas. 
+
+A través de la exploración de variables como la temperatura y la humedad, notamos que estas pueden variar considerablemente según la ubicación geográfica, el tiempo del día, entre otros factores. Pudimos aplicar distintos conocimientos en R como limpieza de datos, analisis univariado y multivariado. Para enriquecer nuestro análisis agregamos columnas como amplitud y estaciones (verano, invierno, otoño y primavera).
+
+Llevamos a cabo tambien analisis espacial que nos permitio visualizar mejor como repercuten estas variables sobre el plano geografico. Analizamos tendencias y duraciones de diversos fenomenos climaticos por medio de series temporales, y llevamos a cabo ajuste, evaluacion y predicciones con modelos como Prophet.
