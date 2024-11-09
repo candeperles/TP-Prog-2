@@ -735,3 +735,267 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 
 ```
+
+# Series Temporales y Predicciones
+
+## Series temporales
+
+### Analisis de correlacion para precipitaciones
+
+Por medio de este analisis queremos medir cuanto influyen una temperatura y humedad altas en la probababilidad de lluvia en dias posteriores
+
+```{r}
+
+# Paso 1: Definir umbrales de "alto" para temperatura y humedad (aquí usando el percentil 75 como ejemplo)
+umbral_temperatura <- quantile(df$TEMP, 0.75, na.rm = TRUE)
+umbral_humedad <- quantile(df$HUM, 0.75, na.rm = TRUE)
+
+# Crear una nueva columna para indicar si un día tiene temperatura y humedad "altas"
+df_cor <- df %>%
+  mutate(condiciones_altas = ifelse(TEMP >= umbral_temperatura & HUM >= umbral_humedad, 1, 0))
+
+# Creamos una nueva columna que indique si llovió al día siguiente
+
+df_cor <- df_cor %>%
+  arrange(FECHA) %>%
+  mutate(lluvia_siguiente = lead(Precipitacion. > 0, default = FALSE)) 
+
+# Paso 3: Calcular la correlación entre condiciones altas y lluvia al día siguiente
+correlacion <- cor(df_cor$condiciones_altas, df_cor$lluvia_siguiente, use = "complete.obs")
+cat("La correlación entre condiciones altas y lluvia al día siguiente es:", correlacion, "\n")
+
+```
+Ahora analizamos la correlacion entre la lluvia de un dia y la lluvia del siguiente
+
+```{r}
+# Creamos una columna que diga si llovio ese dia
+df_cor2 <- df %>%
+  mutate( lluvia = ifelse(Precipitacion. != 0, 1, 0))
+
+# Paso 3: Calcular la correlación entre condiciones altas y lluvia al día siguiente
+correlacion2 <- cor(df_cor$lluvia, df_cor$lluvia_siguiente, use = "complete.obs")
+cat("La correlación entre lluvia en una dia puntual y lluvia al día siguiente es:", correlacion2, "\n")
+
+```
+Esto muestra que si llueve en un dia, es casi seguro que este temporal se extienda al dia siguiente
+
+### Analisis de duracion y frecuencia de eventos climaticos
+
+Analizar periodos de dias muy secos, o con lluvias prolongadas, o con temperaturas muy altas o muy bajas persistentes, puede ayudarnos a entender el comportamiento de estos fenomenos y predecirlos mejor.
+
+```{r}
+
+# Agrupar por fecha y estación para obtener datos diarios
+df_daily <- df %>%
+  select(Precipitacion.,FECHA, NOMBRE, Provincia,TEMP) %>%
+  group_by(FECHA, NOMBRE, Provincia) %>%
+  summarize(precip = mean(Precipitacion., na.rm = TRUE),
+            temp_max = max(TEMP, na.rm = TRUE),
+            temp_min = min(TEMP, na.rm = TRUE)) %>%
+  ungroup()
+
+# Extraer el mes como una columna adicional
+df_daily <- df_daily %>%
+  mutate(mes = format(FECHA, "%m"))
+
+```
+
+Calculamos rachas secas y lluviosas
+
+```{r}
+# Clasificar días lluviosos (1) o secos (0) usando el umbral de 1 mm
+df_daily <- df_daily %>%
+  mutate(lluvioso = ifelse(precip > 1, 1, 0))
+
+# Calcular duración de rachas de días lluviosos o secos
+rachas_lluviosas <- df_daily %>%
+  group_by(NOMBRE) %>%
+  mutate(cambio = cumsum(lluvioso != lag(lluvioso, default = first(lluvioso)))) %>%
+  group_by(NOMBRE, cambio, lluvioso, Provincia, mes) %>%
+  summarize(duracion_dias = n(), FECHA = min(FECHA)) %>%
+  ungroup() %>%
+  filter(lluvioso == 1, duracion_dias>=4)  # Solo rachas lluviosas y de considerable duracion
+
+rachas_secas <- df_daily %>%
+  group_by(NOMBRE) %>%
+  mutate(cambio = cumsum(lluvioso != lag(lluvioso, default = first(lluvioso)))) %>%
+  group_by(NOMBRE, cambio, lluvioso, Provincia, mes) %>%
+  summarize(duracion_dias = n(), FECHA = min(FECHA)) %>%
+  ungroup() %>%
+  filter(lluvioso == 0, duracion_dias >= 7)  # Solo rachas secas y de considerable duracion
+
+head(rachas_lluviosas)
+head(rachas_secas)
+```
+```{r}
+# Clasificar días de calor extremo (1) y frío extremo (0)
+df_daily <- df_daily %>%
+  mutate(calor_extremo = ifelse(temp_max > 35, 1, 0),
+         frio_extremo = ifelse(temp_min < 5, 1, 0))
+
+# Calcular duración de rachas de calor extremo
+rachas_calor_extremo <- df_daily %>%
+  group_by(NOMBRE) %>%
+  mutate(cambio_calor = cumsum(calor_extremo != lag(calor_extremo, default = first(calor_extremo)))) %>%
+  group_by(NOMBRE, cambio_calor, calor_extremo, Provincia, mes) %>%
+  summarize(duracion_dias_calor = n(), FECHA = min(FECHA)) %>%
+  ungroup() %>%
+  filter(calor_extremo == 1, duracion_dias_calor >= 5)  # Solo rachas de calor extremo y con largas duraciones
+
+# Calcular duración de rachas de frío extremo
+rachas_frio_extremo <- df_daily %>%
+  group_by(NOMBRE) %>%
+  mutate(cambio_frio = cumsum(frio_extremo != lag(frio_extremo, default = first(frio_extremo)))) %>%
+  group_by(NOMBRE, cambio_frio, frio_extremo, Provincia, mes) %>%
+  summarize(duracion_dias_frio = n(), FECHA = min(FECHA)) %>%
+  ungroup() %>%
+  filter(frio_extremo == 1, duracion_dias_frio >= 5)  # Solo rachas de frío extremo y con largas duraciones
+
+head(rachas_calor_extremo)
+head(rachas_frio_extremo)
+```
+Ahora visualizaremos las rachas lluviosas y secas por mes y provincia
+
+```{r}
+
+# Gráfico de barras de duración de rachas lluviosas, separado por provincias
+ggplot(rachas_lluviosas, aes(x = mes, y = duracion_dias, fill = mes)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Duración de Rachas de Días Lluviosos por Mes",
+       x = "Mes", y = "Duración (días)") +
+  facet_wrap(~ Provincia, ncol = 4) +  # Distribuye las provincias en una cuadrícula
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") 
+
+```
+
+```{r}
+# Gráfico de barras de duración de rachas secas, separado por provincias
+ggplot(rachas_secas, aes(x = mes, y = duracion_dias, fill = mes)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Duración de Rachas de Días Secos por Mes",
+       x = "Mes", y = "Duración (días)") +
+  facet_wrap(~ Provincia, ncol = 4) +  # Distribuye las provincias en una cuadrícula
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") 
+```
+
+Usamos boxplots para mostrar la duracion de las rachas de frio y calor por provincia
+
+```{r}
+# Gráfico de cajas de duración de rachas de calor extremo
+ggplot(rachas_calor_extremo, aes(x = Provincia, y = duracion_dias_calor, fill = Provincia)) +
+  geom_boxplot() +
+  labs(title = "Distribución de Duración de Rachas de Calor Extremo por Provincia",
+       x = "Provincia", y = "Duración de la Racha (días)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+```
+
+```{r}
+
+# Gráfico de cajas de duración de rachas de calor extremo
+ggplot(rachas_frio_extremo, aes(x = Provincia, y = duracion_dias_frio, fill = Provincia)) +
+  geom_boxplot() +
+  labs(title = "Distribución de Duración de Rachas de Frio Extremo por Provincia",
+       x = "Provincia", y = "Duración de la Racha (días)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+```
+
+Predecimos los dias lluvioso en, por ejemplo: Ciudad de Buenos Aires, valiendonos de Prophet
+
+```{r}
+library(prophet)
+library(dplyr)
+library(Metrics)  # Para calcular MAE y RMSE
+
+# Filtrar datos de rachas lluviosas solo para Buenos Aires
+rachas_ba <- rachas_lluviosas %>%
+  filter(Provincia == "BUENOS AIRES") %>%
+  select(ds = FECHA, y = duracion_dias)
+
+# Dividir los datos en entrenamiento (80%) y prueba (20%)
+set.seed(123)
+n <- nrow(rachas_ba)
+train_size <- floor(0.8 * n)
+
+train_data <- rachas_ba[1:train_size, ]
+test_data <- rachas_ba[(train_size + 1):n, ]
+
+```
+
+```{r}
+# Crear y entrenar el modelo de prophet
+modelo <- prophet(train_data)
+
+# Crear un dataframe con las fechas de test para predecir en el conjunto de prueba
+future_test <- make_future_dataframe(modelo, periods = n - train_size, include_history = FALSE)
+
+# Hacer predicciones en el conjunto de prueba
+predicciones <- predict(modelo, future_test)
+
+# Extraer solo las predicciones de duración de rachas (yhat)
+pred_test <- predicciones %>% select(ds, yhat)
+
+# Calcular MAE y RMSE entre las predicciones y el conjunto de prueba
+mae_test <- mae(test_data$y, pred_test$yhat)
+rmse_test <- rmse(test_data$y, pred_test$yhat)
+
+cat("MAE en el conjunto de prueba:", mae_test, "\n")
+cat("RMSE en el conjunto de prueba:", rmse_test, "\n")
+
+```
+Visualizamos las predicciones realizadas
+
+```{r}
+prophet_plot_components(modelo, prediccion)
+```
+
+# Prediccion a 12 meses del clima
+Para este analisis utilizamos Prophet y creamos un loop para realizar predicciones sobre cada una de las variables de nuestro dataset y despues graficarlas
+```{r}
+
+# Definir las columnas de interés para el clima general
+variables <- c("TEMP", "HUM", "FF", "DD", "Precipitacion")
+
+# Crear una lista para almacenar modelos y predicciones
+modelos <- list()
+predicciones_futuro <- list()
+
+for (variable in variables) {
+  # Prepara los datos para Prophet con la variable correspondiente
+  datos <- df %>%
+    select(ds = FECHA, y = !!sym(variable))
+  
+  # Entrenar el modelo Prophet
+  modelo <- prophet(datos)
+  
+  # Crear un dataframe para predicción a 12 meses
+  futuro <- make_future_dataframe(modelo, periods = 365)
+  
+  # Hacer predicciones para los próximos 12 meses
+  prediccion <- predict(modelo, futuro)
+  
+  # Guardar el modelo y la predicción
+  modelos[[variable]] <- modelo
+  predicciones_futuro[[variable]] <- prediccion %>% select(ds, yhat)
+}
+
+# Imprimir o graficar las predicciones para cada variable
+for (variable in variables) {
+  cat("Predicciones para", variable, ":\n")
+  print(head(predicciones_futuro[[variable]]))
+  plot(modelos[[variable]], predicciones_futuro[[variable]]) +
+    labs(title = paste("Predicción de", variable, "para los próximos 12 meses"),
+         x = "Fecha", y = variable)
+}
+
+```
+
