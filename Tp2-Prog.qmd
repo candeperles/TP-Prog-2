@@ -6,7 +6,7 @@ editor: visual
 
 # Introducción
 
-En este trabajo realizaremos un análisis exploratorio de datos provistos por el Servicio Meteorológico Nacional. Los datos son diarios, los archivos por día indican año, mes y día. Exploramos distintas categorías y variables como: Fecha, hora, temperatura, humedad, pnm ( presión al nivel Del Mar), dd( dirección del viento), fuerza del viento y nombre del aeropuerto.
+En este trabajo realizaremos un análisis exploratorio de datos provistos por el Servicio Meteorológico Nacional. Los datos son diarios, los archivos por día indican año, mes y día. Exploramos distintas categorías y variables como: Fecha, hora, Temperatura, humedad, pnm ( presión al nivel Del Mar), dd( dirección del viento), fuerza del viento y nombre del aeropuerto.
 
 Nuestro objetivo del trabajo consiste:
 
@@ -75,7 +75,7 @@ Filtramos los valores de la columna DD, direccion del viento, para quedarnos con
 df <- df %>% filter(DD<=360)
 ```
 
-## EDA
+# EDA
 
 ### Analisis univariado
 
@@ -164,7 +164,7 @@ max_re
 min_re
 ```
 
-Realizamos un gráfico de 10 estaciones con mayor promedio de temperatura
+Realizamos un gráfico de 10 estaciones con mayor promedio de Temperatura
 
 ```{r}
 library(ggplot2)
@@ -184,7 +184,7 @@ top_10
 
 grafico_aero_temp = ggplot(top_10, aes(x = promedio_TEMP, y = reorder(NOMBRE, promedio_TEMP))) +
   geom_bar(stat = "identity", fill = "lightcoral") +
-  labs(x = "Temperatura Promedio", y = "Estaciones",) + ggtitle("Top 10 estaciones con mayor promedio de temperatura") +
+  labs(x = "Temperatura Promedio", y = "Estaciones",) + ggtitle("Top 10 estaciones con mayor promedio de Temperatura") +
   theme(plot.title = element_text(size = 10)) +
   theme_minimal() +
   theme(axis.text.y = element_text(hjust = 1))
@@ -205,7 +205,7 @@ p2
 
 Ploteamos una matriz de correlacion para buscar relaciones entre las variables numericas de nuestro dataset
 
-En esta matriz podemos apreciar que, mientras que niguna variable exhibe una fuerte correlación con otras, sí existen ciertas con una correlación cercana a 0.5 como Latitud y Temperatura (las temperaturas más calidas con más comunes al norte que al sur del país), Longitud con Temperatura y Humedad (las zonas cercanas a la costa atlantica tienden a presentar más humedad), Latitud y Altura, u Hora y Temperatura (son más comunes las altas temperatura en ciertos momentos del día)
+En esta matriz podemos apreciar que, mientras que niguna variable exhibe una fuerte correlación con otras, sí existen ciertas con una correlación cercana a 0.5 como Latitud y Temperatura (las Temperaturas más calidas con más comunes al norte que al sur del país), Longitud con Temperatura y Humedad (las zonas cercanas a la costa atlantica tienden a presentar más humedad), Latitud y Altura, u Hora y Temperatura (son más comunes las altas Temperatura en ciertos momentos del día)
 
 ```{r}
 library(reshape2) # Para reestructurar datos para ggplot
@@ -303,7 +303,7 @@ p1_at
 
 ```
 
-Vemos la temperatura promedio por estación del año
+Vemos la Temperatura promedio por estación del año
 
 ```{r}
 library(ggplot2)
@@ -346,7 +346,7 @@ grafico_amplitud
 
 ```
 
-Distribución de temperatura por estación
+Distribución de Temperatura por estación
 
 ```{r}
 library(ggplot2)
@@ -354,7 +354,7 @@ library(dplyr)
 
 p1 <- ggplot(df, aes(x = Estacion, y = TEMP, fill = Estacion)) +
   geom_boxplot() +
-  labs(title = "Distribución de temperatura por estación", x = "Estación", y = "Temperatura") +
+  labs(title = "Distribución de Temperatura por estación", x = "Estación", y = "Temperatura") +
   theme_minimal()
 p1
 ```
@@ -388,9 +388,9 @@ p5 <- df %>%
 p5
 ```
 
-Scatter plot temperatura vs humedad:
+Scatter plot Temperatura vs humedad:
 
-El gráfico `p3` es un diagrama de dispersión de Temperatura vs Humedad, con puntos coloreados por la `estación` . Este gráfico es útil para visualizar la relación entre la temperatura y la humedad en diferentes estaciones. Al colorear los puntos según la temporada, se puede observar cualquier patrón o tendencia estacional en los datos. Por ejemplo, que determinadas estaciones tienen temperaturas más altas y humedad más baja, o viceversa. Este tipo de visualización ayuda a comprender cómo estas dos variables interactúan y varían con los cambios estacionales.
+El gráfico `p3` es un diagrama de dispersión de Temperatura vs Humedad, con puntos coloreados por la `estación` . Este gráfico es útil para visualizar la relación entre la Temperatura y la humedad en diferentes estaciones. Al colorear los puntos según la temporada, se puede observar cualquier patrón o tendencia estacional en los datos. Por ejemplo, que determinadas estaciones tienen Temperaturas más altas y humedad más baja, o viceversa. Este tipo de visualización ayuda a comprender cómo estas dos variables interactúan y varían con los cambios estacionales.
 
 ```{r}
 library(ggplot2)
@@ -406,6 +406,47 @@ p3
 # Analisis Espacial
 
 En esta seccion llevaremos s cabo un analisis espacial del dataset, valiendonos de los datos geograficos de cada estacion y de la libreria leaflet.
+
+## Mapa de Temperatura y precipitaciones 
+
+Aqui utilizaremos celdas de Voronoi para mejor representar el area alcanzada por cada estacion meteorologica. Estas celdas unen cada punto del mapa con su estacion mas cercana, creando asi poligonos alrededor de cada una de las estaciones.
+
+```{r}
+library(dplyr)
+library(deldir)
+library(ggplot2)
+
+# Extraemos los promedios de temperatura y precipitaciones
+avg_data <- df %>%
+  group_by(NOMBRE, Latitud, Longitud) %>%
+  summarise(avg_temperature = mean(TEMP, na.rm = TRUE),
+            avg_precipitation = mean(Precipitacion., na.rm = TRUE))
+
+# Definimos las celdas de voronoi
+voronoi <- deldir(avg_data$Longitud, avg_data$Latitud)
+
+# Extraemos las celdas de Voronoi
+voronoi_tiles <- data.frame(
+  x = voronoi$d$dirsgs[, c(1, 3)],  # las coordenadas de los segmentos
+  y = voronoi$d$dirsgs[, c(2, 4)]
+)
+
+# Convertimos las coordenadas en un dataframe
+voronoi_tiles <- data.frame(
+  x = c(voronoi_tiles$x[,1], voronoi_tiles$y[,1]),
+  y = c(voronoi_tiles$x[,2], voronoi_tiles$y[,2])
+)
+
+# Crear el gráfico con ggplot
+ggplot() +
+  geom_polygon(data = voronoi_tiles, aes(x = x, y = y, group = interaction(x, y)), fill = "lightblue", color = "black") +
+  geom_point(data = avg_data, aes(x = Longitud, y = Latitud, color = avg_temperature), size = 2) +
+  scale_color_viridis_c() +
+  theme_minimal() +
+  labs(title = "Voronoi tessellation of temperatures")
+
+```
+
 
 ## Mapa Diario
 
@@ -435,7 +476,7 @@ datos_dia <- df %>%
 # UI de Shiny
 ui <- fluidPage(
   titlePanel("Mapa de Estaciones Meteorológicas con Capas por Variable"),
-  
+
   sidebarLayout(
     sidebarPanel(
       sliderInput("hora", "Selecciona la Hora:",
@@ -447,7 +488,7 @@ ui <- fluidPage(
                                         "Dirección del Viento" = "wind"),
                          selected = c("temp", "rain", "wind"))
     ),
-    
+
     mainPanel(
       leafletOutput("mapa")
     )
@@ -459,20 +500,20 @@ server <- function(input, output, session) {
   datos_filtrados <- reactive({
     datos_dia %>% filter(HORA == input$hora)
   })
-  
+
   output$mapa <- renderLeaflet({
     leaflet() %>%
       addProviderTiles(providers$OpenStreetMap) %>%
       setView(lng = mean(datos_dia$Longitud), lat = mean(datos_dia$Latitud), zoom = 6)
   })
-  
+
   observe({
     data <- datos_filtrados()
-    
+
     leafletProxy("mapa", data = data) %>%
       clearMarkers() %>%
       clearShapes()
-    
+
     # Capa de Temperatura
     if ("temp" %in% input$layers) {
       leafletProxy("mapa", data = data) %>%
@@ -490,7 +531,7 @@ server <- function(input, output, session) {
           )
         )
     }
-    
+
     # Capa de Lluvia
     if ("rain" %in% input$layers) {
       leafletProxy("mapa", data = data) %>%
@@ -508,7 +549,7 @@ server <- function(input, output, session) {
           )
         )
     }
-    
+
     # Agregar controles de capas
     leafletProxy("mapa") %>%
       addLayersControl(
@@ -523,11 +564,11 @@ shinyApp(ui, server)
 
 ```
 
-En este caso los colores van de verde (temperaturas bajas) a rojo (temperaturas altas), y en caso de precipitaciones, de gris (sin precipitaciones) a azul (fuertes precipitaciones). Cada circulo es una estacion distintas y al hacer click en esta podemos ver las condiciones climaticas para esa estacion en la hora del dia que hayamos seleccionado, ademas de ver de que estacion se trata. Las capas pueden ocultarse para focalizar el analisis en una variables en especifico
+En este caso los colores van de verde (Temperaturas bajas) a rojo (Temperaturas altas), y en caso de precipitaciones, de gris (sin precipitaciones) a azul (fuertes precipitaciones). Cada circulo es una estacion distintas y al hacer click en esta podemos ver las condiciones climaticas para esa estacion en la hora del dia que hayamos seleccionado, ademas de ver de que estacion se trata. Las capas pueden ocultarse para focalizar el analisis en una variables en especifico
 
 ## Mapa de calentamiento
 
-En este mapa podemos visualizar como evoluciona la temperatura promedio por estación y mes, para el periodo de tiempo con el que estamos trabajando, esto puede ayudra a visualizar fenomenos climaticos como olas de calor o frentes de frio polar.
+En este mapa podemos visualizar como evoluciona la Temperatura promedio por estación y mes, para el periodo de tiempo con el que estamos trabajando, esto puede ayudra a visualizar fenomenos climaticos como olas de calor o frentes de frio polar.
 
 ```{r}
 library(shiny)
@@ -540,7 +581,7 @@ library(lubridate)
 
 # Comprobación de datos
 if (any(is.na(df$TEMP))) {
-  stop("Hay valores NA en la columna de temperatura.")
+  stop("Hay valores NA en la columna de Temperatura.")
 }
 
 if (any(is.na(df$FECHA))) {
@@ -548,7 +589,7 @@ if (any(is.na(df$FECHA))) {
 }
 
 
-# Calcular la temperatura promedio por mes y año
+# Calcular la Temperatura promedio por mes y año
 df$year_month <- floor_date(df$FECHA, "month")
 temp_promedio <- df %>%
   group_by(year_month, Latitud, Longitud, NOMBRE) %>%
