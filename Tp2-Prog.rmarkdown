@@ -1,0 +1,1086 @@
+---
+title: "TP2-Prog"
+format: html
+editor: visual
+---
+
+
+# Introducción
+
+En este trabajo realizaremos un análisis exploratorio de datos provistos por el Servicio Meteorológico Nacional. Los datos son diarios, los archivos por día indican año, mes y día. Exploramos distintas categorías y variables como: Fecha, hora, Temperatura, humedad, pnm ( presión al nivel Del Mar), dd( dirección del viento), fuerza del viento y nombre del aeropuerto.
+
+Nuestro objetivo del trabajo consiste:
+
+\- Combinar los datos dados en un único dataset
+
+\- Importar y limpiar datos
+
+\- Realizar análisis estadístico y descriptivo
+
+\- Visualizar variables en gráficos
+
+\- Manejar los valores nulos, faltantes o duplicados
+
+Entre otras consignas e ideas que vayamos aplicado a lo largo del trabajo.
+
+## Primeras Visualizaciones
+
+### Muestra de datos y resumen
+
+Cargamos el dataset y visualizamos las primeras 10 filas
+
+
+```{r}
+
+df <- readRDS("C://Users//anapa//OneDrive//Escritorio//facu//progii//TP-Prog-2//dataset_smn.rds")
+df$Precipitacion. <- as.numeric(df$Precipitacion.)
+head(df)
+```
+
+
+Ahora nos damos una idea general del tipo de datos que posee cada columna y los valores aproximados que toman.
+
+
+```{r}
+summary(df)
+
+```
+
+
+Transformamos a factor las columnas que los requieran
+
+
+```{r}
+library(dplyr)
+columnas_factor <- c("NOMBRE","Provincia","Nro")
+
+df <- df %>%
+  mutate_at(columnas_factor, .funs = factor)
+```
+
+
+### Manejo de NAs y datos atipicos
+
+Debido a que la mayoria de los valores que toma la columna PNM, correspondientes a la presión atmósferica, se encuentran en un rango increiblemente atipico para nuestro planeta
+
+
+```{r}
+df$PNM <- NULL
+```
+
+
+Ahora nos encargamos de eliminar los datos nulos de nuestro dataset
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+df <- drop_na(df)
+summary(df)
+```
+
+
+Filtramos los valores de la columna DD, direccion del viento, para quedarnos con aquellos menores a 360
+
+
+```{r}
+df <- df %>% filter(DD<=360)
+```
+
+
+# EDA
+
+### Analisis univariado
+
+
+```{r}
+# Load the required package
+library(plotly)
+
+# Create the interactive plot with dropdown
+fig <- plot_ly(df, type = 'histogram') %>%
+  layout(
+    updatemenus = list(
+      list(
+        buttons = list(
+          list(method = "restyle",
+               args = list("x", list(df$TEMP)),
+               label = "Temperatura"),
+          list(method = "restyle",
+               args = list("x", list(df$HUM)),
+               label = "Humedad"),
+          list(method = "restyle",
+               args = list("x", list(df$FF)),
+               label = "Fuerza del Viento"),
+          list(method = "restyle",
+               args = list("x", list(df$Altura)),
+               label = "Altura"),
+          list(method = "restyle",
+               args = list("x", list(df$Precipitacion.)),
+               label = "Precipitacion")
+        ),
+        direction = "down",
+        x = 0.1,
+        xanchor = "left",
+        y = 1.2,
+        yanchor = "top"
+      )
+    )
+  )
+fig
+```
+
+
+Vemos cuantas ocurrencias unicas de estaciones y provincias tenemos, y a su vez que provincias y estaciones poseen mas registros.
+
+
+```{r}
+library(dplyr)
+
+n_distinct(df$NOMBRE)
+n_distinct(df$Provincia)
+
+df %>% count(NOMBRE) %>% arrange(desc(n))
+df %>% count(Provincia) %>% arrange(desc(n))
+
+```
+
+
+Analizamos la cantidad de registros que existen para cada uno de los dias y graficos los resultados en un line plot usando ggplot2
+
+
+```{r}
+registros_diarios <- df %>%
+  group_by(FECHA) %>%
+  summarise(Registros = n())
+
+```
+
+```{r}
+library(ggplot2)
+
+# Plot the daily counts
+ggplot(registros_diarios, aes(x = FECHA, y = Registros)) +
+  geom_line(color = "cornflowerblue") +
+  labs(title = "Cantidad de registros por dia",
+       x = "Fecha",
+       y = "Registros") +
+  theme_minimal()
+
+```
+
+
+Buscamos esos dias con valores maximos y minimos, y el promedio de registros por dia.
+
+
+```{r}
+summary(registros_diarios)
+```
+
+```{r}
+max_re <- registros_diarios %>% filter(Registros == max(Registros))
+min_re <- registros_diarios %>% filter(Registros == min(Registros))
+max_re
+min_re
+```
+
+
+Realizamos un gráfico de 10 estaciones con mayor promedio de Temperatura
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(plotly)
+
+promedio_TEMP <- df %>%
+  group_by(NOMBRE) %>%
+  summarise(promedio_TEMP = mean(TEMP, na.rm = TRUE))
+promedio_TEMP
+
+top_10 <- promedio_TEMP[order(-promedio_TEMP$promedio_TEMP), ][1:10, ]
+
+top_10
+
+
+grafico_aero_temp = ggplot(top_10, aes(x = promedio_TEMP, y = reorder(NOMBRE, promedio_TEMP))) +
+  geom_bar(stat = "identity", fill = "lightcoral") +
+  labs(x = "Temperatura Promedio", y = "Estaciones",) + ggtitle("Top 10 estaciones con mayor promedio de Temperatura") +
+  theme(plot.title = element_text(size = 10)) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(hjust = 1))
+grafico_aero_temp
+```
+
+
+### Analisis Multivariado
+
+Ploteamos una matriz de correlacion para buscar relaciones entre las variables numericas de nuestro dataset
+
+En esta matriz podemos apreciar que, mientras que niguna variable exhibe una fuerte correlación con otras, sí existen ciertas con una correlación cercana a 0.5 como Latitud y Temperatura (las Temperaturas más calidas con más comunes al norte que al sur del país), Longitud con Temperatura y Humedad (las zonas cercanas a la costa atlantica tienden a presentar más humedad), Latitud y Altura, u Hora y Temperatura (son más comunes las altas Temperatura en ciertos momentos del día)
+
+
+```{r}
+library(reshape2) # Para reestructurar datos para ggplot
+
+#Seleccionar solo las columnas numéricas
+numeric_df <- df %>% select_if(is.numeric)
+
+#Calcular la matriz de correlación
+cor_matrix <- cor(numeric_df, use = "complete.obs")
+
+# Reestructurar la matriz de correlación para ggplot2
+cor_melted <- melt(cor_matrix)
+
+# Graficar el mapa de calor
+ggplot(cor_melted, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                       midpoint = 0, limit = c(-1, 1), space = "Lab",
+                       name="Correlación") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  labs(title = "Matriz de Correlación", x = "Variables", y = "Variables")
+
+```
+
+```{r}
+# 
+# Definimos una funcion que indique la estacion en base a la fecha
+get_estacion <- function(fecha) {
+  # Nos quedamos solo con dia y mes
+  mes <- as.integer(format(fecha, "%m"))
+  dia <- as.integer(format(fecha, "%d"))
+  
+  # determinamos la estacion en base a estos datos
+  if ((mes == 12 && dia >= 21) || mes %in% c(1, 2) || (mes == 3 && dia <= 20)) {
+    return("Verano")
+  } else if ((mes == 3 && dia >= 21) || mes %in% c(4, 5) || (mes == 6 && dia <= 20)) {
+    return("Otoño")
+  } else if ((mes == 6 && dia >= 21) || mes %in% c(7, 8) || (mes == 9 && dia <= 20)) {
+    return("Invierno")
+  } else {
+    return("Primavera")
+  }
+}
+
+# Lo aplicamos al dataset
+df$Estacion <- sapply(df$FECHA, get_estacion)
+
+# Lo pasamos de character a factor
+df$Estacion <- as.factor(df$Estacion)
+
+#Visualizamos
+summary(df$Estacion)
+```
+
+
+Creamos tambien una variable Amplitud, que denota la amplitud termica alcanzada cada dia.
+
+
+```{r}
+library(dplyr)
+
+# Función para calcular amplitud térmica diaria
+calcular_amplitud_termica <- function(df) {
+  df <- df %>%
+    
+    # Agrupar por día y estación
+    group_by(FECHA, NOMBRE) %>%
+    
+    # Calcular la amplitud térmica diaria
+    summarize(AmplitudTermica = max(TEMP) - min(TEMP), .groups = 'drop') %>%
+    
+    # Unir la amplitud térmica calculada de vuelta a cada registro horario original
+    right_join(df, by = c("FECHA", "NOMBRE"))
+  
+  return(df)
+}
+
+# Aplicar la función al dataset
+df <- calcular_amplitud_termica(df)
+
+df$AmplitudTermica <- as.numeric(df$AmplitudTermica)
+
+```
+
+
+Distribución amplitud térmica
+
+
+```{r}
+library(ggplot2)
+library(scales)
+
+p1_at <- ggplot(df, aes(x = AmplitudTermica)) +
+  geom_histogram(binwidth = 1, fill = "deeppink", color = "grey", alpha = 0.7) +
+  labs(title = "Histograma De Amplitud Termica", x = "Amplitud Termica", y = "Frequency") +
+  theme_minimal()
+p1_at
+
+```
+
+
+Vemos la Temperatura promedio por estación del año
+
+
+```{r}
+library(ggplot2)
+
+promedio_estaciones = df %>%
+  group_by(Estacion)%>%
+  summarise(promedio_estacion_temp = mean(TEMP, na.rm = TRUE))
+
+grafico_estacion_temp = ggplot(promedio_estaciones, aes(x= Estacion, y= promedio_estacion_temp)) + geom_bar(fill= "lightcoral",stat = "identity")  + 
+  labs(title="Temperatura promedio por estación", 
+       y="Estación") + 
+  theme_minimal()
+grafico_estacion_temp
+```
+
+
+Distribución de humedad por estación
+
+
+```{r}
+p2 <- ggplot(df, aes(x = Estacion, y = HUM, fill = Estacion)) +
+  geom_boxplot() +
+  labs(title = "Distribución de humedad por estación", x = "Estación", y = "Humedad") +
+  theme_minimal()
+p2
+```
+
+Amplitud térmica promedio por estación
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(plotly)
+promedio_amplitud <- df %>%
+  group_by(NOMBRE) %>%
+  summarise(promedio_amplitud = mean(AmplitudTermica, na.rm = TRUE))
+promedio_amplitud
+
+top_10 <- promedio_amplitud[order(-promedio_amplitud$promedio_amplitud), ][1:10, ]
+
+top_10
+
+
+grafico_amplitud = ggplot(top_10, aes(x = promedio_amplitud, y = reorder(NOMBRE, promedio_amplitud))) +
+  geom_bar(stat = "identity", fill = "darkcyan") +
+  labs(x = "Amplitud Promedio", y = "Estaciones",) + ggtitle("Top 10 estaciones con mayor promedio de Amplitud") +
+  theme(plot.title = element_text(size = 10)) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(hjust = 1))
+grafico_amplitud
+
+```
+
+
+Distribución de Temperatura por estación
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+p1 <- ggplot(df, aes(x = Estacion, y = TEMP, fill = Estacion)) +
+  geom_boxplot() +
+  labs(title = "Distribución de Temperatura por estación", x = "Estación", y = "Temperatura") +
+  theme_minimal()
+p1
+```
+
+
+Distribución de humedad por estación
+
+
+```{r}
+p2 <- ggplot(df, aes(x = Estacion, y = HUM, fill = Estacion)) +
+  geom_boxplot() +
+  labs(title = "Distribución de humedad por estación", x = "Estación", y = "Humedad") +
+  theme_minimal()
+p2
+```
+
+
+Precipitaciones promedio por estacion
+
+
+```{r}
+p5 <- df %>%
+  group_by(Estacion) %>%
+  summarise(promedio_precipitacion = mean(Precipitacion., na.rm = TRUE)) %>%
+  filter(!is.na(promedio_precipitacion)) %>%
+  ggplot(aes(x = Estacion, y = promedio_precipitacion, fill = Estacion)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(
+    y = "Promedio Precipitaciones",
+    title = "Promedio de precipitaciones por Estacion"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+p5
+```
+
+
+Scatter plot Temperatura vs humedad:
+
+El gráfico `p3` es un diagrama de dispersión de Temperatura vs Humedad, con puntos coloreados por la `estación` . Este gráfico es útil para visualizar la relación entre la Temperatura y la humedad en diferentes estaciones. Al colorear los puntos según la temporada, se puede observar cualquier patrón o tendencia estacional en los datos. Por ejemplo, que determinadas estaciones tienen Temperaturas más altas y humedad más baja, o viceversa. Este tipo de visualización ayuda a comprender cómo estas dos variables interactúan y varían con los cambios estacionales.
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+p3 <- ggplot(df, aes(x = TEMP, y = HUM, color = Estacion)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "Scatter plot de Temperatura vs Humedad", x = "Temperatura", y = "Humedad") +
+  theme_minimal()
+p3
+```
+
+
+
+# Analisis Espacial
+
+En esta seccion llevaremos s cabo un analisis espacial del dataset, valiendonos de los datos geograficos de cada estacion y de la libreria leaflet.
+
+## Mapa de Temperatura y precipitaciones 
+
+Aqui utilizaremos celdas de Voronoi para mejor representar el area alcanzada por cada estacion meteorologica. Estas celdas unen cada punto del mapa con su estacion mas cercana, creando asi poligonos alrededor de cada una de las estaciones.
+
+
+```{r}
+library(dplyr)
+library(deldir)
+library(leaflet)
+library(sf)
+library(rnaturalearth)
+
+# Extraemos los promedios de temperatura y precipitaciones
+avg_data <- df %>%
+  group_by(NOMBRE, Latitud, Longitud) %>%
+  summarise(avg_temperature = mean(TEMP, na.rm = TRUE),
+            avg_precipitation = mean(Precipitacion., na.rm = TRUE))
+
+# Definimos las celdas de Voronoi
+voronoi <- deldir(avg_data$Longitud, avg_data$Latitud)
+
+# Extraemos las celdas de Voronoi (polígonos)
+voronoi_tiles <- tile.list(voronoi)
+
+# Convertir las celdas de Voronoi a polígonos (objeto sf)
+voronoi_polygons <- lapply(voronoi_tiles, function(tile) {
+  coords <- cbind(tile$x, tile$y)
+  
+  # Asegurarse de que el primer y el último punto coincidan para cerrar el polígono
+  coords <- rbind(coords, coords[1, ])
+  
+  # Convertir a un polígono
+  st_polygon(list(coords))
+})
+
+# Crear un objeto 'sf' con los polígonos de Voronoi
+voronoi_sf <- st_sfc(voronoi_polygons, crs = 4326)
+
+# Añadir las temperaturas promedio al objeto sf
+voronoi_sf <- st_sf(voronoi_sf, avg_temperature = rep(avg_data$avg_temperature, length.out = length(voronoi_sf)))
+
+# Obtener el mapa de Argentina usando rnaturalearth
+argentina <- ne_states(country = "Argentina")
+
+# Crear el mapa interactivo con leaflet
+leaflet(data = voronoi_sf) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%  # Fondo de mapa
+  addPolygons(
+    fillColor = ~colorNumeric(palette = "RdYlGn", domain = voronoi_sf$avg_temperature, reverse = TRUE)(avg_temperature),
+    fillOpacity = 0.5,
+    color = "black",
+    weight = 1,
+    popup = ~paste("Temperature: ", round(avg_temperature, 2), "°C")
+  ) %>%
+  addCircleMarkers(
+    data = avg_data,
+    ~Longitud, ~Latitud,
+    radius = 5,
+    color = ~colorNumeric(palette = "RdYlGn", domain = avg_data$avg_temperature, reverse = TRUE)(avg_temperature),
+    popup = ~paste("Station: ", NOMBRE, "<br>Temperature: ", round(avg_temperature, 2), "°C")
+  ) %>%
+  setView(lng = -65, lat = -38, zoom = 5)  # Ajustar vista inicial (aproximadamente en el centro de Argentina)
+
+
+```
+
+```{r}
+
+library(dplyr)
+library(deldir)
+library(leaflet)
+library(sf)
+library(rnaturalearth)
+
+# Definimos las celdas de Voronoi
+voronoi2 <- deldir(avg_data$Longitud, avg_data$Latitud)
+
+# Extraemos las celdas de Voronoi (polígonos)
+voronoi_tiles2 <- tile.list(voronoi2)
+
+# Convertir las celdas de Voronoi a polígonos (objeto sf)
+voronoi_polygons2 <- lapply(voronoi_tiles2, function(tile) {
+  coords <- cbind(tile$x, tile$y)
+  
+  # Asegurarse de que el primer y el último punto coincidan para cerrar el polígono
+  coords <- rbind(coords, coords[1, ])
+  
+  # Convertir a un polígono
+  st_polygon(list(coords))
+})
+
+# Crear un objeto 'sf' con los polígonos de Voronoi
+voronoi_sf2 <- st_sfc(voronoi_polygons, crs = 4326)
+
+# Añadir las precipitaciones promedio al objeto sf
+voronoi_sf_precip <- st_sf(voronoi_sf2, avg_precipitation = rep(avg_data$avg_precipitation, length.out = length(voronoi_sf2)))
+
+# Obtener el mapa de Argentina usando rnaturalearth
+argentina <- ne_states(country = "Argentina")
+
+# Crear el mapa interactivo con leaflet
+leaflet(data = voronoi_sf_precip) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%  # Fondo de mapa
+  addPolygons(
+    fillColor = ~colorNumeric(palette = "Blues", domain = voronoi_sf$avg_precipitation)(avg_precipitation),
+    fillOpacity = 0.7,
+    color = "black",
+    weight = 1,
+    popup = ~paste("Precipitation: ", round(avg_precipitation, 2), "mm")
+  ) %>%
+  addCircleMarkers(
+    data = avg_data,
+    ~Longitud, ~Latitud,
+    radius = 5,
+    color = ~colorNumeric(palette = "Blues", domain = avg_data$avg_precipitation)(avg_precipitation),
+    popup = ~paste("Station: ", NOMBRE, "<br>Precipitation: ", round(avg_precipitation, 2), "mm")
+  ) %>%
+  setView(lng = -65, lat = -38, zoom = 5)  # Ajustar vista inicial (aproximadamente en el centro de Argentina)
+
+```
+
+
+
+## Mapa Diario
+
+Este mapa busca representar la evolucion de las diferentes variables climaticas a lo largo de un dia elegido al azar, este tipo de graficos es usado a menudo para radares meteorologicos y seguimiento de temporales.
+
+Un ejemplo es el uso de radaras meteorologicos de seguimiento de precipitaciones en Formula 1, para agilizar la estrategia del equipo y piloto en base al movimiento de frentes de lluvia y tormentas alrededor del circuito.
+
+
+```{r}
+library(shiny)
+library(leaflet)
+library(dplyr)
+library(sf)
+library(leaflet.extras)
+
+# Seleccionar un día aleatorio en el que haya llovia en alguna estación
+set.seed(123)
+df_dia_lluvioso <- df %>%
+  filter(Precipitacion. > 0) %>%
+  select(FECHA) %>%
+  distinct() %>%
+  sample_n(1)
+
+dia_seleccionado <- df_dia_lluvioso$FECHA[1]
+datos_dia <- df %>%
+  filter(as.Date(FECHA) == dia_seleccionado)
+
+# UI de Shiny
+ui <- fluidPage(
+  titlePanel("Mapa de Estaciones Meteorológicas con Capas por Variable"),
+
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("hora", "Selecciona la Hora:",
+                  min = 0, max = 23, value = 12, step = 1, round = 0,
+                  sep = "", animate = TRUE),
+      checkboxGroupInput("layers", "Selecciona Capas a Mostrar:",
+                         choices = list("Temperatura" = "temp",
+                                        "Lluvia" = "rain",
+                                        "Dirección del Viento" = "wind"),
+                         selected = c("temp", "rain", "wind"))
+    ),
+
+    mainPanel(
+      leafletOutput("mapa")
+    )
+  )
+)
+
+# Servidor de Shiny
+server <- function(input, output, session) {
+  datos_filtrados <- reactive({
+    datos_dia %>% filter(HORA == input$hora)
+  })
+
+  output$mapa <- renderLeaflet({
+    leaflet() %>%
+      addProviderTiles(providers$OpenStreetMap) %>%
+      setView(lng = mean(datos_dia$Longitud), lat = mean(datos_dia$Latitud), zoom = 6)
+  })
+
+  observe({
+    data <- datos_filtrados()
+
+    leafletProxy("mapa", data = data) %>%
+      clearMarkers() %>%
+      clearShapes()
+
+    # Capa de Temperatura
+    if ("temp" %in% input$layers) {
+      leafletProxy("mapa", data = data) %>%
+        addCircleMarkers(
+          ~Longitud, ~Latitud,
+          color = ~colorNumeric("RdYlGn", TEMP, reverse = TRUE)(TEMP),
+          radius = 5,
+          group = "Temperatura",
+          popup = ~paste(
+            "<b>Estación:</b>", NOMBRE, "<br>",
+            "<b>Temperatura:</b>", TEMP, "°C", "<br>",
+            "<b>Lluvia:</b>", Precipitacion., "mm", "<br>",
+            "<b>Fuerza del viento:</b>", FF, "km/h", "<br>",
+            "<b>Dirección del viento:</b>", DD, "°"
+          )
+        )
+    }
+
+    # Capa de Lluvia
+    if ("rain" %in% input$layers) {
+      leafletProxy("mapa", data = data) %>%
+        addCircleMarkers(
+          ~Longitud, ~Latitud,
+          color = ~colorNumeric("Blues", Precipitacion.)(Precipitacion.),
+          radius = 5,
+          group = "Lluvia",
+          popup = ~paste(
+            "<b>Estación:</b>", NOMBRE, "<br>",
+            "<b>Temperatura:</b>", TEMP, "°C", "<br>",
+            "<b>Lluvia:</b>", Precipitacion., "mm", "<br>",
+            "<b>Fuerza del viento:</b>", FF, "km/h", "<br>",
+            "<b>Dirección del viento:</b>", DD, "°"
+          )
+        )
+    }
+
+    # Agregar controles de capas
+    leafletProxy("mapa") %>%
+      addLayersControl(
+        overlayGroups = c("Temperatura", "Lluvia"),
+        options = layersControlOptions(collapsed = FALSE)
+      )
+  })
+}
+
+# Ejecutar la aplicación
+shinyApp(ui, server)
+
+```
+
+
+En este caso los colores van de verde (Temperaturas bajas) a rojo (Temperaturas altas), y en caso de precipitaciones, de gris (sin precipitaciones) a azul (fuertes precipitaciones). Cada circulo es una estacion distintas y al hacer click en esta podemos ver las condiciones climaticas para esa estacion en la hora del dia que hayamos seleccionado, ademas de ver de que estacion se trata. Las capas pueden ocultarse para focalizar el analisis en una variables en especifico
+
+## Mapa de calentamiento
+
+En este mapa podemos visualizar como evoluciona la Temperatura promedio por estación y mes, para el periodo de tiempo con el que estamos trabajando, esto puede ayudra a visualizar fenomenos climaticos como olas de calor o frentes de frio polar.
+
+
+```{r}
+library(shiny)
+library(leaflet)
+library(dplyr)
+library(lubridate)
+
+# Cargar tus datos (asegúrate de que el DataFrame 'df' contenga tus datos)
+# df <- read.csv("tu_archivo.csv")  # Descomenta y ajusta según sea necesario
+
+# Comprobación de datos
+if (any(is.na(df$TEMP))) {
+  stop("Hay valores NA en la columna de Temperatura.")
+}
+
+if (any(is.na(df$FECHA))) {
+  stop("Hay valores NA en la columna de fechas.")
+}
+
+
+# Calcular la Temperatura promedio por mes y año
+df$year_month <- floor_date(df$FECHA, "month")
+temp_promedio <- df %>%
+  group_by(year_month, Latitud, Longitud, NOMBRE) %>%
+  summarise(average_temp = mean(TEMP, na.rm = TRUE), .groups = 'drop')
+
+# Comprobación de si temp_promedio tiene datos
+if (nrow(temp_promedio) == 0) {
+  stop("No hay datos disponibles para mostrar.")
+}
+
+# UI de Shiny
+ui <- fluidPage(
+  titlePanel("Temperatura Promedio por Mes y Año"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("year_month", "Selecciona el Mes y Año:",
+                  min = min(temp_promedio$year_month, na.rm = TRUE),
+                  max = max(temp_promedio$year_month, na.rm = TRUE),
+                  value = min(temp_promedio$year_month, na.rm = TRUE),
+                  timeFormat = "%Y-%m",
+                  animate = TRUE)
+    ),
+    
+    mainPanel(
+      leafletOutput("mapa")
+    )
+  )
+)
+
+# Servidor de Shiny
+server <- function(input, output, session) {
+  output$mapa <- renderLeaflet({
+    leaflet() %>%
+      addProviderTiles(providers$OpenStreetMap) %>%
+      setView(lng = -64, lat = -38, zoom = 4)  # Ajusta la vista inicial
+  })
+
+  observe({
+    datos_filtrados <- temp_promedio %>%
+      filter(year_month == input$year_month)
+
+    if (nrow(datos_filtrados) > 0) {
+      leafletProxy("mapa", data = datos_filtrados) %>%
+        clearMarkers() %>%
+        clearControls() %>%
+        addCircleMarkers(
+          ~Longitud, ~Latitud,
+          radius = 6,
+          color = ~colorNumeric("RdYlBu", average_temp, reverse = TRUE)(average_temp),
+          fillOpacity = 0.7,
+          popup = ~paste("Estación:", NOMBRE, "<br>",
+                         "Temperatura Promedio:", round(average_temp, 2), "°C")
+        ) %>%
+        addLegend(pal = colorNumeric("RdYlBu", NULL, reverse = TRUE), values = ~average_temp,
+                  position = "bottomright", title = "Temperatura Promedio (°C)")
+    }
+  })
+}
+
+# Ejecutar la aplicación
+shinyApp(ui, server)
+
+```
+
+
+# Series Temporales y Predicciones
+
+## Series temporales
+
+### Analisis de correlacion para precipitaciones
+
+Por medio de este analisis queremos medir cuanto influyen una temperatura y humedad altas en la probababilidad de lluvia en dias posteriores
+
+
+```{r}
+
+# Paso 1: Definir umbrales de "alto" para temperatura y humedad (aquí usando el percentil 75 como ejemplo)
+umbral_temperatura <- quantile(df$TEMP, 0.75, na.rm = TRUE)
+umbral_humedad <- quantile(df$HUM, 0.75, na.rm = TRUE)
+
+# Crear una nueva columna para indicar si un día tiene temperatura y humedad "altas"
+df_cor <- df %>%
+  mutate(condiciones_altas = ifelse(TEMP >= umbral_temperatura & HUM >= umbral_humedad, 1, 0))
+
+# Creamos una nueva columna que indique si llovió al día siguiente
+
+df_cor <- df_cor %>%
+  arrange(FECHA) %>%
+  mutate(lluvia_siguiente = lead(Precipitacion. > 0, 1,0)) 
+
+# Paso 3: Calcular la correlación entre condiciones altas y lluvia al día siguiente
+correlacion <- cor(df_cor$condiciones_altas, df_cor$lluvia_siguiente, use = "complete.obs")
+cat("La correlación entre condiciones altas y lluvia al día siguiente es:", correlacion, "\n")
+
+```
+
+Ahora analizamos la correlacion entre la lluvia de un dia y la lluvia del siguiente
+
+
+```{r}
+# Creamos una columna que diga si llovio ese dia
+df_cor2 <- df_cor %>%
+  mutate( lluvia = ifelse(Precipitacion. != 0, 1, 0))
+
+# Paso 3: Calcular la correlación entre condiciones altas y lluvia al día siguiente
+correlacion2 <- cor(df_cor2$lluvia, df_cor2$lluvia_siguiente, use = "complete.obs")
+cat("La correlación entre lluvia en una dia puntual y lluvia al día siguiente es:", correlacion2, "\n")
+
+```
+
+Esto muestra que si llueve en un dia, es casi seguro que este temporal se extienda al dia siguiente
+
+### Analisis de duracion y frecuencia de eventos climaticos
+
+Analizar periodos de dias muy secos, o con lluvias prolongadas, o con temperaturas muy altas o muy bajas persistentes, puede ayudarnos a entender el comportamiento de estos fenomenos y predecirlos mejor.
+
+
+```{r}
+
+# Agrupar por fecha y estación para obtener datos diarios
+df_daily <- df %>%
+  select(Precipitacion.,FECHA, NOMBRE, Provincia,TEMP) %>%
+  group_by(FECHA, NOMBRE, Provincia) %>%
+  summarize(precip = mean(Precipitacion., na.rm = TRUE),
+            temp_max = max(TEMP, na.rm = TRUE),
+            temp_min = min(TEMP, na.rm = TRUE)) %>%
+  ungroup()
+
+# Extraer el mes como una columna adicional
+df_daily <- df_daily %>%
+  mutate(mes = format(FECHA, "%m"))
+
+```
+
+
+Calculamos rachas secas y lluviosas
+
+
+```{r}
+# Clasificar días lluviosos (1) o secos (0) usando el umbral de 1 mm
+df_daily <- df_daily %>%
+  mutate(lluvioso = ifelse(precip > 1, 1, 0))
+
+# Calcular duración de rachas de días lluviosos o secos
+rachas_lluviosas <- df_daily %>%
+  group_by(NOMBRE) %>%
+  mutate(cambio = cumsum(lluvioso != lag(lluvioso, default = first(lluvioso)))) %>%
+  group_by(NOMBRE, cambio, lluvioso, Provincia, mes) %>%
+  summarize(duracion_dias = n(), FECHA = min(FECHA)) %>%
+  ungroup() %>%
+  filter(lluvioso == 1, duracion_dias>=4)  # Solo rachas lluviosas y de considerable duracion
+
+rachas_secas <- df_daily %>%
+  group_by(NOMBRE) %>%
+  mutate(cambio = cumsum(lluvioso != lag(lluvioso, default = first(lluvioso)))) %>%
+  group_by(NOMBRE, cambio, lluvioso, Provincia, mes) %>%
+  summarize(duracion_dias = n(), FECHA = min(FECHA)) %>%
+  ungroup() %>%
+  filter(lluvioso == 0, duracion_dias >= 7)  # Solo rachas secas y de considerable duracion
+
+head(rachas_lluviosas)
+head(rachas_secas)
+```
+
+```{r}
+# Clasificar días de calor extremo (1) y frío extremo (0)
+df_daily <- df_daily %>%
+  mutate(calor_extremo = ifelse(temp_max > 35, 1, 0),
+         frio_extremo = ifelse(temp_min < 5, 1, 0))
+
+# Calcular duración de rachas de calor extremo
+rachas_calor_extremo <- df_daily %>%
+  group_by(NOMBRE) %>%
+  mutate(cambio_calor = cumsum(calor_extremo != lag(calor_extremo, default = first(calor_extremo)))) %>%
+  group_by(NOMBRE, cambio_calor, calor_extremo, Provincia, mes) %>%
+  summarize(duracion_dias_calor = n(), FECHA = min(FECHA)) %>%
+  ungroup() %>%
+  filter(calor_extremo == 1, duracion_dias_calor >= 5)  # Solo rachas de calor extremo y con largas duraciones
+
+# Calcular duración de rachas de frío extremo
+rachas_frio_extremo <- df_daily %>%
+  group_by(NOMBRE) %>%
+  mutate(cambio_frio = cumsum(frio_extremo != lag(frio_extremo, default = first(frio_extremo)))) %>%
+  group_by(NOMBRE, cambio_frio, frio_extremo, Provincia, mes) %>%
+  summarize(duracion_dias_frio = n(), FECHA = min(FECHA)) %>%
+  ungroup() %>%
+  filter(frio_extremo == 1, duracion_dias_frio >= 5)  # Solo rachas de frío extremo y con largas duraciones
+
+head(rachas_calor_extremo)
+head(rachas_frio_extremo)
+```
+
+Ahora visualizaremos las rachas lluviosas y secas por mes y provincia
+
+
+```{r}
+
+# Gráfico de barras de duración de rachas lluviosas, separado por provincias
+ggplot(rachas_lluviosas, aes(x = mes, y = duracion_dias, fill = mes)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Duración de Rachas de Días Lluviosos por Mes",
+       x = "Mes", y = "Duración (días)") +
+  facet_wrap(~ Provincia, ncol = 4) +  # Distribuye las provincias en una cuadrícula
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") 
+
+```
+
+```{r}
+# Gráfico de barras de duración de rachas secas, separado por provincias
+ggplot(rachas_secas, aes(x = mes, y = duracion_dias, fill = mes)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Duración de Rachas de Días Secos por Mes",
+       x = "Mes", y = "Duración (días)") +
+  facet_wrap(~ Provincia, ncol = 4) +  # Distribuye las provincias en una cuadrícula
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") 
+```
+
+
+Usamos boxplots para mostrar la duracion de las rachas de frio y calor por provincia
+
+
+```{r}
+# Gráfico de cajas de duración de rachas de calor extremo
+ggplot(rachas_calor_extremo, aes(x = Provincia, y = duracion_dias_calor, fill = Provincia)) +
+  geom_boxplot() +
+  labs(title = "Distribución de Duración de Rachas de Calor Extremo por Provincia",
+       x = "Provincia", y = "Duración de la Racha (días)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+```
+
+```{r}
+
+# Gráfico de cajas de duración de rachas de calor extremo
+ggplot(rachas_frio_extremo, aes(x = Provincia, y = duracion_dias_frio, fill = Provincia)) +
+  geom_boxplot() +
+  labs(title = "Distribución de Duración de Rachas de Frio Extremo por Provincia",
+       x = "Provincia", y = "Duración de la Racha (días)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+```
+
+
+Predecimos los dias lluvioso en, por ejemplo: Ciudad de Buenos Aires, valiendonos de Prophet
+
+
+```{r}
+library(prophet)
+library(dplyr)
+library(Metrics)  # Para calcular MAE y RMSE
+
+# Filtrar datos de rachas lluviosas solo para Buenos Aires
+rachas_ba <- rachas_lluviosas %>%
+  filter(Provincia == "BUENOS AIRES") %>%
+  select(ds = FECHA, y = duracion_dias)
+
+# Dividir los datos en entrenamiento (80%) y prueba (20%)
+set.seed(123)
+n <- nrow(rachas_ba)
+train_size <- floor(0.8 * n)
+
+train_data <- rachas_ba[1:train_size, ]
+test_data <- rachas_ba[(train_size + 1):n, ]
+
+```
+
+```{r}
+# Crear y entrenar el modelo de prophet
+modelo <- prophet(train_data)
+
+# Crear un dataframe con las fechas de test para predecir en el conjunto de prueba
+future_test <- make_future_dataframe(modelo, periods = n - train_size, include_history = FALSE)
+
+# Hacer predicciones en el conjunto de prueba
+predicciones <- predict(modelo, future_test)
+
+# Extraer solo las predicciones de duración de rachas (yhat)
+pred_test <- predicciones %>% select(ds, yhat)
+
+# Calcular MAE y RMSE entre las predicciones y el conjunto de prueba
+mae_test <- mae(test_data$y, pred_test$yhat)
+rmse_test <- rmse(test_data$y, pred_test$yhat)
+
+cat("MAE en el conjunto de prueba:", mae_test, "\n")
+cat("RMSE en el conjunto de prueba:", rmse_test, "\n")
+
+```
+
+Visualizamos las predicciones realizadas
+
+
+```{r}
+plot(modelo, predicciones)
+prophet_plot_components(modelo, predicciones)
+```
+
+
+# Prediccion a 12 meses del clima
+Para este analisis utilizamos Prophet y realizamos predicciones sobre 2 de las variables de nuestro dataset para despues graficarlas.
+
+
+```{r}
+df_pro <- df %>% 
+  group_by(FECHA) %>%
+  filter(Provincia == 'CAPITAL FEDERAL') %>%
+  summarise(TEMP = mean(TEMP),
+            Precip = mean(Precipitacion.))
+
+df_temp <- df_pro %>%
+  mutate(ds = FECHA, y = TEMP)
+
+# Ajustar el modelo
+modelo <- prophet(df_temp)
+
+# Generar fechas futuras para los próximos 12 meses (365 días)
+futuro <- make_future_dataframe(modelo, periods = 365)
+
+# Hacer la predicción
+prediccion <- predict(modelo, futuro)
+
+# Graficar la predicción
+plot(modelo, prediccion)  # Graficar la serie temporal con la predicción
+
+# Graficar los componentes del modelo
+prophet_plot_components(modelo, prediccion)
+
+```
+
+```{r}
+df_pre <- df_pro %>%
+  mutate(ds = FECHA, y = Precip)
+
+# Ajustar el modelo
+modelo <- prophet(df_pre)
+
+# Generar fechas futuras para los próximos 12 meses (365 días)
+futuro <- make_future_dataframe(modelo, periods = 365)
+
+# Hacer la predicción
+prediccion <- predict(modelo, futuro)
+
+# Graficar la predicción
+plot(modelo, prediccion)  # Graficar la serie temporal con la predicción
+
+# Graficar los componentes del modelo
+prophet_plot_components(modelo, prediccion)
+
+```
+
+
+
+#Conclusion
+
+En este análisis de datos meteorológicos, pudimos analizar información clave y cumplir los objetivos propuestos al principio. Esta información nos permitió observar patrones y variaciones en las condiciones climáticas de diferentes lugares y momentos.También el análisis mediante gráficos nos dio lugar a entender mejor las variables, sus comportamientos y su relación entre ellas. 
+
+A través de la exploración de variables como la temperatura y la humedad, notamos que estas pueden variar considerablemente según la ubicación geográfica, el tiempo del día, entre otros factores. Pudimos aplicar distintos conocimientos en R como limpieza de datos, analisis univariado y multivariado. Para enriquecer nuestro análisis agregamos columnas como amplitud y estaciones (verano, invierno, otoño y primavera).
+
+Llevamos a cabo tambien analisis espacial que nos permitio visualizar mejor como repercuten estas variables sobre el plano geografico. Analizamos tendencias y duraciones de diversos fenomenos climaticos por medio de series temporales, y llevamos a cabo ajuste, evaluacion y predicciones con modelos como Prophet.

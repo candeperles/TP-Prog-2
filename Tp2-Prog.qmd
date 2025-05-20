@@ -954,6 +954,7 @@ cat("RMSE en el conjunto de prueba:", rmse_test, "\n")
 Visualizamos las predicciones realizadas
 
 ```{r}
+plot(modelo, predicciones)
 prophet_plot_components(modelo, predicciones)
 ```
 
